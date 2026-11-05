@@ -107,6 +107,15 @@ optional arguments:
 
 Alternatively, you may run it with `./gcexport.py` if you set the file as executable (i.e., `chmod u+x gcexport.py`).
 
+### Health Data
+
+With `--health DAYS` the daily health data of the last DAYS days is exported
+as JSON files into the subdirectory `health` of the output directory:
+steps, stress, intensity minutes, hydration, sleep score, heart rate
+variability (HRV), weight, plus per-day daily summary, sleep data and body
+battery. Services that are unavailable or not used are skipped with a warning.
+
+
 ### Notes on the Usage
 
 - The `-c COUNT` option might appear to count wrongly when exporting multi-sport activities;

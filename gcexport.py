@@ -34,7 +34,7 @@ import sys
 import unicodedata
 import urllib.request
 import zipfile
-from datetime import datetime, timedelta, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 from getpass import getpass
 from math import floor
 from platform import python_version
@@ -466,6 +466,9 @@ def parse_arguments(argv):
         help='template file with desired columns for CSV output')
     parser.add_argument('-fp', '--fileprefix', action='count', default=0,
         help='set the local time as activity file name prefix')
+    parser.add_argument('--health', type=int, default=0,
+        help='export the daily health data (steps, stress, sleep, HRV, weight, ...) of the'
+            ' last HEALTH days as JSON files into the subdirectory \"health\" of the output directory')
     parser.add_argument('-sa', '--start_activity_no', type=int, default=1,
         help='give index for first activity to import, i.e. skipping the newest activities')
     parser.add_argument('-ex', '--exclude', metavar='FILE',
@@ -875,13 +878,7 @@ def fetch_userstats(args):
     """
     print('Getting display name...', end='')
     logging.info('Social profile %s', URL_GC_PROFILE)
-    profile_json = json.loads(http_req_as_string(URL_GC_PROFILE))
-    if args.verbosity > 0:
-        write_to_file(os.path.join(args.directory, 'profile.json'), json.dumps(profile_json), 'w')
-
-    display_name = profile_json.get('displayName') or profile_json.get('userName')
-    if not display_name:
-        raise GarminException('Did not find the display name in the social profile.')
+    display_name = get_display_name(args)
     print(' Done. displayName=', display_name, sep='')
 
     print('Fetching user stats...', end='')
@@ -893,6 +890,83 @@ def fetch_userstats(args):
     write_to_file(os.path.join(args.directory, 'userstats.json'), result, 'w')
 
     return json.loads(result)
+
+
+def get_display_name(args):
+    """
+    Fetch the display name from the social profile.
+
+    :param args:    command-line arguments (for args.directory etc)
+    :return:        the display name
+    """
+    profile_json = json.loads(http_req_as_string(URL_GC_PROFILE))
+    if args.verbosity > 0:
+        write_to_file(os.path.join(args.directory, 'profile.json'), json.dumps(profile_json), 'w')
+
+    display_name = profile_json.get('displayName') or profile_json.get('userName')
+    if not display_name:
+        raise GarminException('Did not find the display name in the social profile.')
+    return display_name
+
+
+def fetch_health_data(args, display_name, days):
+    """
+    Fetch daily health data (steps, stress, sleep, HRV, weight, ...) for the
+    last *days* days and save each data set as a JSON file in the subdirectory
+    'health' of the output directory. Failing services are skipped with a
+    warning so that the rest of the export still runs.
+
+    :param args:           command-line arguments (for args.directory etc)
+    :param display_name:   Garmin display name, needed for the daily summary
+    :param days:           number of days to fetch (including today)
+    """
+    end = date.today()
+    start = end - timedelta(days=days - 1)
+    health_dir = os.path.join(args.directory, 'health')
+    os.makedirs(health_dir, exist_ok=True)
+
+    range_urls = {
+        'steps': f'https://connectapi.garmin.com/usersummary-service/stats/steps/daily/{start}/{end}',
+        'stress': f'https://connectapi.garmin.com/usersummary-service/stats/stress/daily/{start}/{end}',
+        'intensity_minutes': f'https://connectapi.garmin.com/usersummary-service/stats/im/daily/{start}/{end}',
+        'hydration': f'https://connectapi.garmin.com/usersummary-service/stats/hydration/daily/{start}/{end}',
+        'sleep_score': f'https://connectapi.garmin.com/wellness-service/stats/daily/sleep/score/{start}/{end}',
+        'hrv': f'https://connectapi.garmin.com/hrv-service/hrv/daily/{start}/{end}',
+        'weight': f'https://connectapi.garmin.com/weight-service/weight/range/{start}/{end}?includeAll=true',
+    }
+    for name, url in range_urls.items():
+        fetch_health_json(url, os.path.join(health_dir, name + '.json'))
+
+    daily_dir = os.path.join(health_dir, 'daily')
+    os.makedirs(daily_dir, exist_ok=True)
+    for day_offset in range(days):
+        day = start + timedelta(days=day_offset)
+        daily_urls = {
+            'daily_summary': (
+                f'https://connectapi.garmin.com/usersummary-service/usersummary/daily/{display_name}' f'?calendarDate={day}'
+            ),
+            'sleep': f'https://connectapi.garmin.com/sleep-service/sleep/dailySleepData?date={day}',
+            'body_battery': f'https://connectapi.garmin.com/wellness-service/wellness/bodyBattery/events/{day}',
+        }
+        for name, url in daily_urls.items():
+            fetch_health_json(url, os.path.join(daily_dir, f'{day}_{name}.json'))
+
+
+def fetch_health_json(url, filename):
+    """
+    Fetch one health data URL and save the (pretty-printed) response as a JSON
+    file; failures are logged and skipped.
+
+    :param url:       URL to fetch
+    :param filename:  output file for the JSON response
+    """
+    logging.info('Health data %s', url)
+    try:
+        result = http_req_as_string(url)
+        if result:
+            write_to_file(filename, json.dumps(json.loads(result), indent=2, sort_keys=True), 'w')
+    except (GarminException, garmin_tls_patch.GarminTlsException) as ex:
+        logging.warning('Skipping health data %s: %s', url, ex)
 
 
 def extract_display_name(profile_page):
@@ -1231,6 +1305,11 @@ def main(argv):
     # Query the userstats (activities totals on the profile page). Needed for
     # filtering and for downloading 'all' to know how many activities are available
     userstats_json = fetch_userstats(args)
+
+    if args.health > 0:
+        print(f'Fetching health data for the last {args.health} day(s)...', end='')
+        fetch_health_data(args, get_display_name(args), args.health)
+        print(' Done.')
 
     if args.count == 'all':
         total_to_download = int(userstats_json['userMetrics'][0]['totalActivities'])

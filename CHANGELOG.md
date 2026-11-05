@@ -10,6 +10,9 @@ This changelog is inspired by [Keep a Changelog](https://keepachangelog.com/en/1
   (new runtime dependency, `pip install curl_cffi`)
 - added: support for accounts with multi-factor authentication (MFA); the
   script prompts for the MFA code when Garmin requires one
+- added: new option `--health DAYS` to export the daily health data (steps,
+  stress, intensity minutes, hydration, sleep score, HRV, weight, daily
+  summary, sleep data, body battery) of the last DAYS days as JSON files
 - changed: error messages for failed login or export requests now include
   Garmin's response body for easier diagnosis
 
