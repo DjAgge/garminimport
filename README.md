@@ -1,24 +1,37 @@
 # garmin-connect-export script
 
+**This repository is a fork of [pe-st/garmin-connect-export](https://github.com/pe-st/garmin-connect-export)**
+(see [Forks and Branches](#forks-and-branches) below for the full fork history).
 
+It is maintained by [DjAgge](https://github.com/DjAgge) and was brought back up to date with the help of an
+AI coding agent ([Vibe Code](https://mistral.ai), built by Mistral AI): all changes in this fork were developed
+and tested live against Garmin Connect in a supervised AI session.
 
-Nur für mich :D
+## What's different in this fork
 
+The upstream script no longer worked against Garmin Connect at all (Garmin now rejects non-browser TLS
+fingerprints and has moved all endpoints). This fork fixes that and adds health data export:
 
+- **Modern SSO/OAuth login** with browser TLS imitation via
+  [curl_cffi](https://github.com/lexiforest/curl_cffi) (new runtime dependency), including support for
+  accounts with **multi-factor authentication (MFA)**
+- Hand-built OAuth1 signing that matches oauthlib exactly (an empty `oauth_token` must be omitted,
+  otherwise Garmin answers with HTTP 401)
+- All API endpoints moved to `connectapi.garmin.com` (the old `connect.garmin.com/modern/proxy/...`
+  URLs answer with HTML)
+- **Token caching** (`--tokenfile`, default `~/.gcexport_tokens.json`): later runs skip the login and
+  thus the MFA prompt; expired access tokens are renewed from the OAuth1 token
+- **Health data export** (`--health DAYS`): daily steps, stress, intensity minutes, hydration, sleep
+  (score and detailed data), heart rate variability, weight and body battery as JSON files
+- Error messages now include Garmin's response body (status code and text) for much easier diagnosis
 
-
-
-
-
-
-
-
+See [CHANGELOG.md](./CHANGELOG.md) for the detailed list of changes.
 
 
 :exclamation: | This script [now requires Python 3.8 or newer](https://github.com/pe-st/garmin-connect-export/issues/64)
 ---|---
 
-:exclamation: | There is a [report of a deactivated user account that might by caused by using this script](https://github.com/pe-st/garmin-connect-export/issues/60). The exact reasons are not known, and my account has never been deactivated. But be aware that I can give no guarantee that Garmin tolerates requests made from this script. I believe though that this script is fair use (it doesn't do anything other than automating stuff that you do in the browser). But be careful if you plan to run the script as periodical task (with `cron` etc)
+:exclamation: | There is a [report of a deactivated user account that might by caused by using this script](https://github.com/pe-st/garmin-connect-export/issues/60). The exact reasons are not known, and the upstream author's account has never been deactivated. But be aware that no guarantee can be given that Garmin tolerates requests made from this script. The script is believed to be fair use (it doesn't do anything other than automating stuff that you do in the browser). But be careful if you plan to run the script as periodical task (with `cron` etc)
 ---|---
 
 Download a copy of your Garmin Connect data, including stats and GPX tracks.
@@ -31,14 +44,17 @@ Before going into the details of this script itself, some meta information.
 
 There exist many [forks](https://help.github.com/articles/fork-a-repo/) of this script repository:
 
+- [DjAgge](https://github.com/DjAgge/garminimport)
+  This is the repository you're looking at: a fork of **pe-st**'s repo (see below), updated for the
+  current Garmin Connect login and API (see [What's different in this fork](#whats-different-in-this-fork)).
 - [pe-st](https://github.com/pe-st/garmin-connect-export)
-  This is my (**pe-st**) repository, the one you're looking at (or the source of the copy you're looking at).
-  It was [detached from **kjkjava**'s repo](https://github.com/pe-st/garmin-connect-export/issues/53)
+  The upstream of this fork, **Peter Steiner**'s repository. It was
+  [detached from **kjkjava**'s repo](https://github.com/pe-st/garmin-connect-export/issues/53)
   (see below) in February 2021, after more than 5 years of inactivity of the upstream repo.
 - [kjkjava](https://github.com/kjkjava/garmin-connect-export)
-  The original repo (mother repo) of my (**pe-st**) repo. It seems not maintained anymore (last commit in 2015, see also: [pr#42](https://github.com/kjkjava/garmin-connect-export/pull/42) and [issues#46](https://github.com/kjkjava/garmin-connect-export/issues/46))
+  The original repo (mother repo) of **pe-st**'s repo. It seems not maintained anymore (last commit in 2015, see also: [pr#42](https://github.com/kjkjava/garmin-connect-export/pull/42) and [issues#46](https://github.com/kjkjava/garmin-connect-export/issues/46))
 - [moderation](https://github.com/moderation/garmin-connect-export)
-  After some inactivity of the **@kjkjava** repo, **@moderation** made some corrections in his own fork to have a working script again. His fork is primarily designed for his use which is cycling, while mine (**pe-st**) is running.
+  After some inactivity of the **@kjkjava** repo, **@moderation** made some corrections in his own fork to have a working script again. His fork is primarily designed for his use which is cycling, while **pe-st**'s is running.
   In March 2018 I integrated **@moderation**'s work into my own repo, so logically **@moderation** is now the
   father repo of my repo. In April 2018 **@moderation** migrated his script to Python 3. Unfortunately
   **@moderation**'s script [didn't work for me for a couple of months](https://github.com/moderation/garmin-connect-export/issues/11),
