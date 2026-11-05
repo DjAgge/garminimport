@@ -129,7 +129,14 @@ class GarminClient:
             mfa_method = mfa_info.get('mfaLastMethodUsed') or 'email'
             ticket = _handle_mfa(sess, login_params, mfa_method)
         else:
-            raise GarminTlsException(f'Garmin SSO login failed: {_sso_error(resp_json)}', resp)
+            message = f'Garmin SSO login failed: {_sso_error(resp_json)}'
+            if resp.status_code == 429:
+                message += (
+                    "\nGarmin is rate limiting the login (HTTP 429)."
+                    " Too many login attempts in a short time;"
+                    " wait 15-30 minutes before trying again."
+                )
+            raise GarminTlsException(message, resp)
 
         # Sets the Cloudflare load balancer cookie for backend pinning (best effort).
         try:
