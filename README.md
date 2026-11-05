@@ -1,5 +1,20 @@
 # garmin-connect-export script
 
+
+
+Nur für mich :D
+
+
+
+
+
+
+
+
+
+
+
+
 :exclamation: | This script [now requires Python 3.8 or newer](https://github.com/pe-st/garmin-connect-export/issues/64)
 ---|---
 
