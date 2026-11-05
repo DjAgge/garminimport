@@ -3,6 +3,20 @@
 This changelog is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## Unreleased
+
+- changed: login to Garmin Connect now uses the modern SSO/OAuth flow with
+  browser TLS imitation via [curl_cffi](https://github.com/lexiforest/curl_cffi)
+  (new runtime dependency, `pip install curl_cffi`)
+- added: support for accounts with multi-factor authentication (MFA); the
+  script prompts for the MFA code when Garmin requires one
+- added: new option `--health DAYS` to export the daily health data (steps,
+  stress, intensity minutes, hydration, sleep score, HRV, weight, daily
+  summary, sleep data, body battery) of the last DAYS days as JSON files
+- changed: error messages for failed login or export requests now include
+  Garmin's response body for easier diagnosis
+
+
 ## 4.1.0 - 2023-07-22
 
 - changed: updated the list of parent activities (`PARENT_TYPE_ID`) to the new set Garmin is now using
