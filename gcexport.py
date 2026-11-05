@@ -98,8 +98,8 @@ CSV_TEMPLATE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "csv_he
 
 # URLs for various services.
 
-URL_GC_PROFILE = 'https://connect.garmin.com/modern/profile'
-URL_GC_USERSTATS = 'https://connect.garmin.com/modern/proxy/userstats-service/statistics/'
+URL_GC_PROFILE = 'https://connectapi.garmin.com/userprofile-service/socialProfile'
+URL_GC_USERSTATS = 'https://connectapi.garmin.com/userstats-service/statistics/'
 URL_GC_LIST = 'https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?'
 URL_GC_ACTIVITY = 'https://connect.garmin.com/modern/proxy/activity-service/activity/'
 URL_GC_DEVICE = 'https://connect.garmin.com/modern/proxy/device-service/deviceservice/app-info/'
@@ -874,12 +874,14 @@ def fetch_userstats(args):
     :return:        json with user statistics
     """
     print('Getting display name...', end='')
-    logging.info('Profile page %s', URL_GC_PROFILE)
-    profile_page = http_req_as_string(URL_GC_PROFILE)
+    logging.info('Social profile %s', URL_GC_PROFILE)
+    profile_json = json.loads(http_req_as_string(URL_GC_PROFILE))
     if args.verbosity > 0:
-        write_to_file(os.path.join(args.directory, 'profile.html'), profile_page, 'w')
+        write_to_file(os.path.join(args.directory, 'profile.json'), json.dumps(profile_json), 'w')
 
-    display_name = extract_display_name(profile_page)
+    display_name = profile_json.get('displayName') or profile_json.get('userName')
+    if not display_name:
+        raise GarminException('Did not find the display name in the social profile.')
     print(' Done. displayName=', display_name, sep='')
 
     print('Fetching user stats...', end='')
