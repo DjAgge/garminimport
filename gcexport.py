@@ -100,15 +100,15 @@ CSV_TEMPLATE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "csv_he
 
 URL_GC_PROFILE = 'https://connectapi.garmin.com/userprofile-service/socialProfile'
 URL_GC_USERSTATS = 'https://connectapi.garmin.com/userstats-service/statistics/'
-URL_GC_LIST = 'https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?'
-URL_GC_ACTIVITY = 'https://connect.garmin.com/modern/proxy/activity-service/activity/'
-URL_GC_DEVICE = 'https://connect.garmin.com/modern/proxy/device-service/deviceservice/app-info/'
-URL_GC_GEAR = 'https://connect.garmin.com/modern/proxy/gear-service/gear/filterGear?activityId='
+URL_GC_LIST = 'https://connectapi.garmin.com/activitylist-service/activities/search/activities?'
+URL_GC_ACTIVITY = 'https://connectapi.garmin.com/activity-service/activity/'
+URL_GC_DEVICE = 'https://connectapi.garmin.com/device-service/deviceservice/app-info/'
+URL_GC_GEAR = 'https://connectapi.garmin.com/gear-service/gear/filterGear?activityId='
 URL_GC_ACT_PROPS = 'https://connect.garmin.com/modern/main/js/properties/activity_types/activity_types.properties'
 URL_GC_EVT_PROPS = 'https://connect.garmin.com/modern/main/js/properties/event_types/event_types.properties'
-URL_GC_GPX_ACTIVITY = 'https://connect.garmin.com/modern/proxy/download-service/export/gpx/activity/'
-URL_GC_TCX_ACTIVITY = 'https://connect.garmin.com/modern/proxy/download-service/export/tcx/activity/'
-URL_GC_ORIGINAL_ACTIVITY = 'http://connect.garmin.com/proxy/download-service/files/activity/'
+URL_GC_GPX_ACTIVITY = 'https://connectapi.garmin.com/download-service/export/gpx/activity/'
+URL_GC_TCX_ACTIVITY = 'https://connectapi.garmin.com/download-service/export/tcx/activity/'
+URL_GC_ORIGINAL_ACTIVITY = 'https://connectapi.garmin.com/download-service/files/activity/'
 
 
 class GarminException(Exception):
