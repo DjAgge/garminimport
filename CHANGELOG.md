@@ -2,6 +2,11 @@
 
 This changelog is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+The entries below "Unreleased" (and everything up to 4.1.0) document the changes of this fork
+([DjAgge/garminimport](https://github.com/DjAgge/garminimport), developed with the help of an AI coding
+agent); the older entries are the history of the upstream repository
+[pe-st/garmin-connect-export](https://github.com/pe-st/garmin-connect-export).
+
 
 ## Unreleased
 
