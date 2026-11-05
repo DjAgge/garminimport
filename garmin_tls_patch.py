@@ -40,7 +40,7 @@ try:
 except ImportError:  # pragma: no cover
     curl_requests = None
 
-SSO = "https://sso.garmin.com/sso"
+SSO = "https://sso.garmin.com"
 CONNECT_API = "https://connectapi.garmin.com"
 CLIENT_ID = "GCM_ANDROID_DARK"
 SERVICE_URL = "https://mobile.integration.garmin.com/gcm/android"
