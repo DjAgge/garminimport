@@ -30,7 +30,9 @@ Description:    Modern Garmin Connect login for gcexport.py.
 import base64
 import hashlib
 import hmac
+import json
 import logging
+import os
 import secrets
 import time
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
@@ -86,14 +88,18 @@ class GarminClient:
 
     def __init__(self):
         self.session = None
+        self.oauth1_token = None
+        self.oauth2_token = None
 
-    def login(self, username, password):
+    def login(self, username, password, token_file=None):
         """
         Log in to Garmin Connect with the modern SSO/OAuth flow.
 
         Prompts for an MFA code if the account requires it. On success the
         module-level *CLIENT* holds an authenticated curl_cffi session whose
-        requests carry the OAuth2 bearer token.
+        requests carry the OAuth2 bearer token. If *token_file* is given,
+        the OAuth tokens are saved there so that later runs can skip the
+        login (and thus the MFA prompt) via restore().
         """
         sess = _new_session()
 
@@ -148,7 +154,7 @@ class GarminClient:
             logging.debug('Ignoring error from sso/embed: %s', ex)
 
         oauth1_token = get_oauth1_token(ticket, sess)
-        oauth2_token = exchange(oauth1_token, sess)
+        oauth2_token = set_expirations(exchange(oauth1_token, sess))
         logging.debug('OAuth2 token expires in %s s', oauth2_token.get('expires_in'))
 
         sess.headers.update(
@@ -158,7 +164,47 @@ class GarminClient:
             }
         )
         self.session = sess
+        self.oauth1_token = oauth1_token
+        self.oauth2_token = oauth2_token
+        if token_file:
+            save_tokens(token_file, oauth1_token, oauth2_token)
         return oauth2_token
+
+    def restore(self, token_file):
+        """
+        Restore a session from the tokens in *token_file* without an SSO
+        login (and thus without an MFA prompt). A still-valid OAuth2 token is
+        used directly; an expired one is renewed from the OAuth1 token.
+
+        :param token_file:  path of the JSON file with the saved tokens
+        :return:            True if the session could be restored
+        """
+        if not token_file:
+            return False
+        tokens = load_tokens(token_file)
+        if not tokens:
+            return False
+        oauth1_token, oauth2_token = tokens
+        try:
+            sess = _new_session()
+            if time.time() >= oauth2_token.get('expires_at', 0) - 60:
+                logging.info('OAuth2 token expired, renewing from the OAuth1 token')
+                oauth2_token = set_expirations(exchange(oauth1_token, sess))
+                save_tokens(token_file, oauth1_token, oauth2_token)
+            sess.headers.update(
+                {
+                    'Authorization': f"Bearer {oauth2_token['access_token']}",
+                    'User-Agent': OAUTH_USER_AGENT,
+                }
+            )
+        except (GarminTlsException, curl_requests.exceptions.RequestException, OSError, ValueError) as ex:
+            logging.warning('Could not restore the session from %s: %s', token_file, ex)
+            return False
+        self.session = sess
+        self.oauth1_token = oauth1_token
+        self.oauth2_token = oauth2_token
+        logging.info('Session restored from %s', token_file)
+        return True
 
     def session_active(self):
         """True after a successful login()."""
@@ -300,6 +346,43 @@ def _handle_mfa(sess, login_params, mfa_method):
     return resp_json['serviceTicketId']
 
 
+def set_expirations(token):
+    """Add absolute expiry timestamps (epoch seconds) to the OAuth2 token."""
+    token['expires_at'] = int(time.time() + token.get('expires_in', 0))
+    token['refresh_token_expires_at'] = int(time.time() + token.get('refresh_token_expires_in', 0))
+    return token
+
+
+def save_tokens(token_file, oauth1_token, oauth2_token):
+    """
+    Save the OAuth tokens as JSON to *token_file* (readable only by the
+    owner). Failures are logged and otherwise ignored (the export continues
+    with the tokens in memory).
+    """
+    try:
+        with open(os.path.expanduser(token_file), 'w', encoding='utf-8') as token_json:
+            json.dump({'oauth1': oauth1_token, 'oauth2': oauth2_token}, token_json, indent=2)
+        os.chmod(os.path.expanduser(token_file), 0o600)
+    except OSError as ex:
+        logging.warning('Could not save the tokens to %s: %s', token_file, ex)
+
+
+def load_tokens(token_file):
+    """
+    Load the OAuth tokens from *token_file*.
+
+    :param token_file:  path of the JSON file with the saved tokens
+    :return:            (oauth1_token, oauth2_token) tuple, or None if absent
+    """
+    try:
+        with open(os.path.expanduser(token_file), encoding='utf-8') as token_json:
+            tokens = json.load(token_json)
+        return tokens['oauth1'], tokens['oauth2']
+    except (OSError, ValueError, KeyError) as ex:
+        logging.debug('No usable tokens in %s: %s', token_file, ex)
+        return None
+
+
 def get_oauth1_token(ticket, sess):
     """Exchange the SSO ticket for an OAuth1 token (the 'preauthorized' call)."""
     url = f'{CONNECT_API}/oauth-service/oauth/preauthorized' f'?ticket={ticket}&login-url={SERVICE_URL}&accepts-mfa-tokens=true'
@@ -317,6 +400,8 @@ def exchange(oauth1_token, sess):
     """Exchange the OAuth1 token for the OAuth2 access token."""
     url = f'{CONNECT_API}/oauth-service/oauth/exchange/user/2.0'
     body = {'audience': 'GARMIN_CONNECT_MOBILE_ANDROID_DI'}
+    if oauth1_token.get('mfa_token'):
+        body['mfa_token'] = oauth1_token['mfa_token']
     auth = oauth1_sign(
         'POST',
         url,

@@ -466,6 +466,9 @@ def parse_arguments(argv):
         help='template file with desired columns for CSV output')
     parser.add_argument('-fp', '--fileprefix', action='count', default=0,
         help='set the local time as activity file name prefix')
+    parser.add_argument('--tokenfile', default='~/.gcexport_tokens.json',
+        help='JSON file for caching the OAuth tokens, so that later runs skip the login (and'
+            ' the MFA prompt). Set to an empty string to disable the token file')
     parser.add_argument('--health', type=int, default=0,
         help='export the daily health data (steps, stress, sleep, HRV, weight, ...) of the'
             ' last HEALTH days as JSON files into the subdirectory \"health\" of the output directory')
@@ -485,12 +488,17 @@ def login_to_garmin_connect(args):
     Uses garmin_tls_patch (curl_cffi TLS imitation + OAuth1/OAuth2); prompts
     for an MFA code if the account requires one.
     """
+    token_file = args.tokenfile or None
+    if garmin_tls_patch.CLIENT.restore(token_file):
+        print('Session restored from token file ', token_file, sep='')
+        return
+
     username = args.username if args.username else input('Username: ')
     password = args.password if args.password else getpass()
 
     print('Connecting to Garmin Connect...', end='')
     logging.info('Connecting to Garmin SSO')
-    garmin_tls_patch.CLIENT.login(username, password)
+    garmin_tls_patch.CLIENT.login(username, password, token_file=token_file)
     print(' Done.')
 
 
