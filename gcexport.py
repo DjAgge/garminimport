@@ -47,6 +47,8 @@ from urllib.request import Request
 # Local application/library specific imports
 from filtering import read_exclude, update_download_stats
 
+import garmin_tls_patch
+
 COOKIE_JAR = http.cookiejar.CookieJar()
 OPENER = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(COOKIE_JAR), urllib.request.HTTPSHandler(debuglevel=0))
 
@@ -94,46 +96,8 @@ MAX_TRIES = 3
 
 CSV_TEMPLATE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "csv_header_default.properties")
 
-WEBHOST = "https://connect.garmin.com"
-REDIRECT = "https://connect.garmin.com/modern/"
-BASE_URL = "https://connect.garmin.com/en-US/signin"
-SSO = "https://sso.garmin.com/sso"
-CSS = "https://static.garmincdn.com/com.garmin.connect/ui/css/gauth-custom-v1.2-min.css"
-
-DATA = {
-    'service': REDIRECT,
-    'webhost': WEBHOST,
-    'source': BASE_URL,
-    'redirectAfterAccountLoginUrl': REDIRECT,
-    'redirectAfterAccountCreationUrl': REDIRECT,
-    'gauthHost': SSO,
-    'locale': 'en_US',
-    'id': 'gauth-widget',
-    'cssUrl': CSS,
-    'clientId': 'GarminConnect',
-    'rememberMeShown': 'true',
-    'rememberMeChecked': 'false',
-    'createAccountShown': 'true',
-    'openCreateAccount': 'false',
-    'displayNameShown': 'false',
-    'consumeServiceTicket': 'false',
-    'initialFocus': 'true',
-    'embedWidget': 'false',
-    'generateExtraServiceTicket': 'true',
-    'generateTwoExtraServiceTickets': 'false',
-    'generateNoServiceTicket': 'false',
-    'globalOptInShown': 'true',
-    'globalOptInChecked': 'false',
-    'mobile': 'false',
-    'connectLegalTerms': 'true',
-    'locationPromptShown': 'true',
-    'showPassword': 'true',
-}
-
 # URLs for various services.
 
-URL_GC_LOGIN = 'https://sso.garmin.com/sso/signin?' + urlencode(DATA)
-URL_GC_POST_AUTH = 'https://connect.garmin.com/modern/activities?'
 URL_GC_PROFILE = 'https://connect.garmin.com/modern/profile'
 URL_GC_USERSTATS = 'https://connect.garmin.com/modern/proxy/userstats-service/statistics/'
 URL_GC_LIST = 'https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?'
@@ -225,6 +189,11 @@ def http_req(url, post=None, headers=None):
     :param headers:      dictionary of headers
     :return: response body (type 'bytes')
     """
+    # After a modern (SSO/OAuth) login all requests go through the
+    # curl_cffi session so that the TLS fingerprint looks like a browser.
+    if garmin_tls_patch.CLIENT.session_active():
+        return garmin_tls_patch.CLIENT.http_request(url, post, headers)
+
     request = Request(url)
     # Tell Garmin we're some supported browser.
     request.add_header(
@@ -508,56 +477,17 @@ def parse_arguments(argv):
 
 def login_to_garmin_connect(args):
     """
-    Perform all HTTP requests to login to Garmin Connect.
+    Perform the modern SSO/OAuth login to Garmin Connect.
+
+    Uses garmin_tls_patch (curl_cffi TLS imitation + OAuth1/OAuth2); prompts
+    for an MFA code if the account requires one.
     """
     username = args.username if args.username else input('Username: ')
     password = args.password if args.password else getpass()
 
-    logging.debug("Login params: %s", urlencode(DATA))
-
-    # Initially, we need to get a valid session cookie, so we pull the login page.
     print('Connecting to Garmin Connect...', end='')
-    logging.info('Connecting to %s', URL_GC_LOGIN)
-    connect_response = http_req_as_string(URL_GC_LOGIN)
-    if args.verbosity > 0:
-        write_to_file(os.path.join(args.directory, 'connect_response.html'), connect_response, 'w')
-    for cookie in COOKIE_JAR:
-        logging.debug("Cookie %s : %s", cookie.name, cookie.value)
-    print(' Done.')
-
-    # Now we'll actually login.
-    # Fields that are passed in a typical Garmin login.
-    post_data = {
-        'username': username,
-        'password': password,
-        'embed': 'false',
-        'rememberme': 'on',
-    }
-
-    headers = {'referer': URL_GC_LOGIN}
-
-    print('Requesting Login ticket...', end='')
-    logging.info('Requesting Login ticket')
-    login_response = http_req_as_string(f'{URL_GC_LOGIN}#', post_data, headers)
-
-    for cookie in COOKIE_JAR:
-        logging.debug("Cookie %s : %s", cookie.name, cookie.value)
-    if args.verbosity > 0:
-        write_to_file(os.path.join(args.directory, 'login_response.html'), login_response, 'w')
-
-    # extract the ticket from the login response
-    pattern = re.compile(r".*\?ticket=([-\w]+)\";.*", re.MULTILINE | re.DOTALL)
-    match = pattern.match(login_response)
-    if not match:
-        raise GarminException(
-            'Couldn\'t find ticket in the login response. Cannot log in. Did you enter the correct username and password?'
-        )
-    login_ticket = match.group(1)
-    print(' Done. Ticket=', login_ticket, sep='')
-
-    print("Authenticating...", end='')
-    logging.info('Authentication URL %s', f'{URL_GC_POST_AUTH}ticket={login_ticket}')
-    http_req(f'{URL_GC_POST_AUTH}ticket={login_ticket}')
+    logging.info('Connecting to Garmin SSO')
+    garmin_tls_patch.CLIENT.login(username, password)
     print(' Done.')
 
 

@@ -119,6 +119,14 @@ Alternatively, you may run it with `./gcexport.py` if you set the file as execut
 Of course, you must have Python installed to run this, any recent 3.x version should work
 (see also [Python 3.x Versions](./CONTRIBUTING.md#python-3x-versions)).
 
+### curl_cffi
+
+The login to Garmin Connect requires the [curl_cffi](https://github.com/lexiforest/curl_cffi)
+Python package (`pip install curl_cffi`): Garmin's SSO endpoints reject requests whose
+TLS fingerprint does not look like a real browser, and curl_cffi provides that browser
+TLS imitation. Login with multi-factor authentication (MFA) is supported; the script
+prompts for the MFA code when Garmin requires one.
+
 Most Mac and Linux users should already have Python.
 Note that if you run into the [TLSV1 ALERT problem](https://github.com/pe-st/garmin-connect-export/issues/16)
 or the [HTTP 403 Authentication Error](https://github.com/pe-st/garmin-connect-export/issues/59),
