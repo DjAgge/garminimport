@@ -122,6 +122,17 @@ optional arguments:
 
 Alternatively, you may run it with `./gcexport.py` if you set the file as executable (i.e., `chmod u+x gcexport.py`).
 
+### Token Caching (no MFA prompt on every run)
+
+The OAuth tokens are cached in `~/.gcexport_tokens.json` (change with
+`--tokenfile`, disable with `--tokenfile ""`). Later runs reuse the cached
+session: a still-valid access token is used directly, an expired one is
+renewed from the OAuth1 token — both without an SSO login and thus without
+an MFA prompt. A full login (with MFA) is only needed when the tokens are
+absent or completely expired. The token file is stored with owner-only
+permissions; for scheduled/Docker runs it should live on a persistent volume.
+
+
 ### Health Data
 
 With `--health DAYS` the daily health data of the last DAYS days is exported

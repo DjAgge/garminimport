@@ -130,3 +130,59 @@ def test_twitter_reference_vector():
         consumer_secret='kAcSOqF21Fu85e7zjL7CwGAVzU',
     )
     assert 'wvMJArPeDssy2e%2FxaxyCwHkHphY%3D' in auth
+
+
+def test_token_save_load_roundtrip(tmp_path):
+    token_file = str(tmp_path / 'tokens.json')
+    oauth1 = {'oauth_token': 't1', 'oauth_token_secret': 's1'}
+    oauth2 = {'access_token': 'a1', 'expires_in': 1000}
+    tls.save_tokens(token_file, oauth1, tls.set_expirations(oauth2))
+    loaded = tls.load_tokens(token_file)
+    assert loaded is not None
+    assert loaded[0] == oauth1
+    assert loaded[1]['access_token'] == 'a1'
+    assert loaded[1]['expires_at'] > 0
+    assert (tmp_path / 'tokens.json').stat().st_mode & 0o777 == 0o600
+
+
+def test_load_tokens_missing_file(tmp_path):
+    assert tls.load_tokens(str(tmp_path / 'nope.json')) is None
+
+
+def test_restore_missing_file(tmp_path):
+    client = tls.GarminClient()
+    assert client.restore(str(tmp_path / 'nope.json')) is False
+    assert not client.session_active()
+
+
+def test_restore_valid_token(tmp_path):
+    token_file = str(tmp_path / 'tokens.json')
+    tls.save_tokens(
+        token_file,
+        {'oauth_token': 't1', 'oauth_token_secret': 's1'},
+        tls.set_expirations({'access_token': 'a1', 'expires_in': 3600}),
+    )
+    client = tls.GarminClient()
+    assert client.restore(token_file) is True
+    assert client.session_active()
+    assert client.session.headers['Authorization'] == 'Bearer a1'
+
+
+def test_restore_expired_token_renews(tmp_path, monkeypatch):
+    token_file = str(tmp_path / 'tokens.json')
+    tls.save_tokens(
+        token_file,
+        {'oauth_token': 't1', 'oauth_token_secret': 's1'},
+        {'access_token': 'old', 'expires_in': 3600, 'expires_at': 1},
+    )
+
+    def fake_exchange(oauth1_token, sess):
+        assert oauth1_token['oauth_token'] == 't1'
+        return {'access_token': 'new', 'expires_in': 3600}
+
+    monkeypatch.setattr(tls, 'exchange', fake_exchange)
+    client = tls.GarminClient()
+    assert client.restore(token_file) is True
+    assert client.session.headers['Authorization'] == 'Bearer new'
+    loaded = tls.load_tokens(token_file)
+    assert loaded[1]['access_token'] == 'new'

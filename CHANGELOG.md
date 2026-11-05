@@ -17,6 +17,13 @@ This changelog is inspired by [Keep a Changelog](https://keepachangelog.com/en/1
   Garmin's response body for easier diagnosis
 
 
+## Unreleased
+
+- added: new option `--tokenfile` (default `~/.gcexport_tokens.json`) for
+  caching the OAuth tokens; later runs skip the SSO login and thus the MFA
+  prompt, an expired access token is renewed from the OAuth1 token
+
+
 ## 4.1.0 - 2023-07-22
 
 - changed: updated the list of parent activities (`PARENT_TYPE_ID`) to the new set Garmin is now using
