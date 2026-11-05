@@ -926,16 +926,25 @@ def fetch_health_data(args, display_name, days):
     os.makedirs(health_dir, exist_ok=True)
 
     range_urls = {
-        'steps': f'https://connectapi.garmin.com/usersummary-service/stats/steps/daily/{start}/{end}',
-        'stress': f'https://connectapi.garmin.com/usersummary-service/stats/stress/daily/{start}/{end}',
-        'intensity_minutes': f'https://connectapi.garmin.com/usersummary-service/stats/im/daily/{start}/{end}',
-        'hydration': f'https://connectapi.garmin.com/usersummary-service/stats/hydration/daily/{start}/{end}',
-        'sleep_score': f'https://connectapi.garmin.com/wellness-service/stats/daily/sleep/score/{start}/{end}',
-        'hrv': f'https://connectapi.garmin.com/hrv-service/hrv/daily/{start}/{end}',
-        'weight': f'https://connectapi.garmin.com/weight-service/weight/range/{start}/{end}?includeAll=true',
+        'steps': 'https://connectapi.garmin.com/usersummary-service/stats/steps/daily/{start}/{end}',
+        'stress': 'https://connectapi.garmin.com/usersummary-service/stats/stress/daily/{start}/{end}',
+        'intensity_minutes': 'https://connectapi.garmin.com/usersummary-service/stats/im/daily/{start}/{end}',
+        'hydration': 'https://connectapi.garmin.com/usersummary-service/stats/hydration/daily/{start}/{end}',
+        'sleep_score': 'https://connectapi.garmin.com/wellness-service/stats/daily/sleep/score/{start}/{end}',
+        'hrv': 'https://connectapi.garmin.com/hrv-service/hrv/daily/{start}/{end}',
+        'weight': 'https://connectapi.garmin.com/weight-service/weight/range/{start}/{end}?includeAll=true',
     }
-    for name, url in range_urls.items():
-        fetch_health_json(url, os.path.join(health_dir, name + '.json'))
+    for name, url_template in range_urls.items():
+        merged = None
+        for chunk_start, chunk_end in date_range_chunks(start, end):
+            url = url_template.format(start=chunk_start, end=chunk_end)
+            merged = merge_health_json(merged, fetch_health_json(url))
+        if merged is not None:
+            write_to_file(
+                os.path.join(health_dir, name + '.json'),
+                json.dumps(merged, indent=2, sort_keys=True),
+                'w',
+            )
 
     daily_dir = os.path.join(health_dir, 'daily')
     os.makedirs(daily_dir, exist_ok=True)
@@ -949,24 +958,74 @@ def fetch_health_data(args, display_name, days):
             'body_battery': f'https://connectapi.garmin.com/wellness-service/wellness/bodyBattery/events/{day}',
         }
         for name, url in daily_urls.items():
-            fetch_health_json(url, os.path.join(daily_dir, f'{day}_{name}.json'))
+            day_json = fetch_health_json(url)
+            if day_json is not None:
+                write_to_file(
+                    os.path.join(daily_dir, f'{day}_{name}.json'),
+                    json.dumps(day_json, indent=2, sort_keys=True),
+                    'w',
+                )
 
 
-def fetch_health_json(url, filename):
+def date_range_chunks(start, end):
     """
-    Fetch one health data URL and save the (pretty-printed) response as a JSON
-    file; failures are logged and skipped.
+    Split the inclusive date range [start, end] into chunks of at most 28
+    days (Garmin's limit for the daily stats range endpoints).
 
-    :param url:       URL to fetch
-    :param filename:  output file for the JSON response
+    :param start:   first day of the range
+    :param end:     last day of the range
+    :return:        list of (chunk_start, chunk_end) tuples
+    """
+    chunks = []
+    chunk_end = end
+    while chunk_end >= start:
+        chunk_start = max(start, chunk_end - timedelta(days=27))
+        chunks.append((chunk_start, chunk_end))
+        chunk_end = chunk_start - timedelta(days=1)
+    chunks.reverse()
+    return chunks
+
+
+def merge_health_json(merged, new):
+    """
+    Merge the JSON responses of consecutive range chunks: lists are
+    concatenated, dicts are merged key by key (concatenating list values).
+
+    :param merged:  merged response so far (None initially)
+    :param new:     response of the next chunk (None if the chunk failed)
+    :return:        the merged response
+    """
+    if new is None:
+        return merged
+    if merged is None:
+        return new
+    if isinstance(new, list):
+        return merged + new
+    if isinstance(new, dict):
+        for key, value in new.items():
+            if isinstance(value, list) and isinstance(merged.get(key), list):
+                merged[key] = merged[key] + value
+            else:
+                merged[key] = value
+        return merged
+    return new
+
+
+def fetch_health_json(url):
+    """
+    Fetch one health data URL and return the parsed JSON response; failures
+    are logged and result in None.
+
+    :param url:  URL to fetch
+    :return:     parsed JSON response, or None on failure
     """
     logging.info('Health data %s', url)
     try:
         result = http_req_as_string(url)
-        if result:
-            write_to_file(filename, json.dumps(json.loads(result), indent=2, sort_keys=True), 'w')
+        return json.loads(result) if result else None
     except (GarminException, garmin_tls_patch.GarminTlsException) as ex:
         logging.warning('Skipping health data %s: %s', url, ex)
+        return None
 
 
 def extract_display_name(profile_page):
