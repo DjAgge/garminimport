@@ -15,9 +15,11 @@ services:
     # the Dockerfile ENTRYPOINT runs gcexport.py directly; override it with
     # the scheduler loop so the container waits for RUN_TIME instead of
     # starting an export (and crashing on the interactive login prompt) on
-    # every (re)start. Manual runs (initial history, fresh login) are done
-    # from the container console, see README.md.
-    command: ["sh", "tools/run_loop.sh"]
+    # every (re)start. Docker APPENDS command to the ENTRYPOINT, so the
+    # ENTRYPOINT itself must be replaced here.
+    # Manual runs (initial history, fresh login) are done from the container
+    # console, see README.md.
+    entrypoint: ["sh", "tools/run_loop.sh"]
     restart: unless-stopped
     environment:
       # when to run the daily export (container time; set TZ accordingly)
