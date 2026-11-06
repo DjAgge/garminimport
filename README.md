@@ -174,11 +174,17 @@ later runs need no login and no MFA code.
 database of a self-hosted [Budibase](https://budibase.com) instance via its
 REST API:
 
-- one row per day from the daily summaries (steps, calories, resting heart
-  rate, body battery, ...) into the table "Health Daily"
-- one row per weighing from `weight.json` into the table "Health Weight"
-- tables and columns are created automatically if they do not exist yet
-- rows carry an `importKey`; repeated runs never import duplicates
+- everything is combined into **one row per calendar day** in one table
+  ("Health Daily"), so the data is uniformly day-based
+- included per day: the daily summary (steps, calories, resting heart rate,
+  body battery, ...), stress, intensity minutes, hydration, sleep score, HRV
+  and **at most one weight measurement per day** (the last one of the day)
+- fields from the range statistics are prefixed with their source (e.g.
+  `stress_avg`, `sleepScore_value`, `hrv_lastNightAvg`), weight fields with
+  `weight_` (e.g. `weight_weight`, `weight_bmi`)
+- the table and its columns are created automatically if they do not exist
+- rows carry an `importKey` (`daily:<date>`); repeated runs never import
+  duplicates
 
 Configuration is done via environment variables (`BUDIBASE_URL`,
 `BUDIBASE_API_KEY`, `EXPORT_DIR`, see the script header for all options); set

@@ -30,8 +30,10 @@ agent); the older entries are the history of the upstream repository
 - added: `Dockerfile`, `docker-compose.yml` and `tools/run_daily.sh` for a
   daily scheduled export on a NAS
 - added: `tools/budibase_import.py` to push the exported health data into
-  a self-hosted Budibase instance (auto-creates tables, imports without
-  duplicates)
+  a self-hosted Budibase instance: one combined row per calendar day
+  (daily summary, stress, intensity minutes, hydration, sleep score, HRV
+  and at most one weight measurement per day), auto-created table,
+  duplicate-free rows via an importKey
 
 
 ## 4.1.0 - 2023-07-22

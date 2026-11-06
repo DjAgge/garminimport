@@ -20,8 +20,7 @@ services:
       # Budibase (self-hosted) - only needed for the import step
       BUDIBASE_URL: "http://budibase:8080"
       BUDIBASE_API_KEY: ""
-      BUDIBASE_TABLE_DAILY: "Health Daily"
-      BUDIBASE_TABLE_WEIGHT: "Health Weight"
+      BUDIBASE_TABLE: "Health Daily"
       # leave empty to disable the Budibase import
       # BUDIBASE_API_KEY: ""
     volumes:

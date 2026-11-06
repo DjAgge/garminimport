@@ -13,17 +13,24 @@ Description:    Imports the health data exported by gcexport.py --health into
                 run afterwards (see tools/run_daily.sh), so the export
                 itself stays independent of any database.
 
+                Everything is combined into ONE row per calendar day in one
+                table: the daily summary (steps, calories, resting heart
+                rate, body battery, ...) plus the range statistics (stress,
+                intensity minutes, hydration, sleep score, HRV) plus at most
+                ONE weight measurement per day (the last one of the day).
+                Range fields are prefixed with their source (e.g. "stress_"),
+                weight fields with "weight_".
+
 Configuration via environment variables:
 
     BUDIBASE_URL          base URL of the Budibase instance, e.g.
                           http://budibase:8080 or https://bb.example.com
     BUDIBASE_API_KEY      API key of the Budibase app (Settings → API keys)
-    BUDIBASE_TABLE_DAILY  table for the daily summaries (default "Health Daily")
-    BUDIBASE_TABLE_WEIGHT table for the weight measurements (default "Health Weight")
+    BUDIBASE_TABLE        table for the daily rows (default "Health Daily")
     EXPORT_DIR            gcexport output directory containing health/
     DRY_RUN               set to 1 to only print what would be imported
 
-The tables are created automatically if they do not exist yet (columns are
+The table is created automatically if it does not exist yet (columns are
 inferred from the JSON data). Rows are identified by an 'importKey' column so
 that repeated daily runs never create duplicates.
 """
@@ -41,12 +48,20 @@ except ImportError:  # pragma: no cover
 
 BUDIBASE_URL = os.environ.get('BUDIBASE_URL', '').rstrip('/')
 BUDIBASE_API_KEY = os.environ.get('BUDIBASE_API_KEY', '')
-TABLE_DAILY = os.environ.get('BUDIBASE_TABLE_DAILY', 'Health Daily')
-TABLE_WEIGHT = os.environ.get('BUDIBASE_TABLE_WEIGHT', 'Health Weight')
+TABLE = os.environ.get('BUDIBASE_TABLE', 'Health Daily')
 EXPORT_DIR = os.environ.get('EXPORT_DIR', '.')
 DRY_RUN = os.environ.get('DRY_RUN', '') == '1'
 
 SCALAR_TYPES = (str, int, float, bool)
+
+# range JSONs of the export, with the prefix their fields get in the daily row
+RANGE_FILES = {
+    'stress_': 'stress.json',
+    'im_': 'intensity_minutes.json',
+    'hydration_': 'hydration.json',
+    'sleepScore_': 'sleep_score.json',
+    'hrv_': 'hrv.json',
+}
 
 
 class BudibaseException(Exception):
@@ -124,42 +139,98 @@ def import_rows(table_name, rows):
             api('POST', f'/tables/{table_id}/rows', row)
 
 
-def flatten_scalars(data):
-    """Keep only the top-level scalar fields of a JSON object."""
-    return {key: value for key, value in data.items() if isinstance(value, SCALAR_TYPES)}
+def add_prefixed_scalars(target, prefix, data):
+    """Add the scalar fields of *data* to *target*, prefixed with *prefix*."""
+    for key, value in data.items():
+        if key == 'calendarDate':
+            continue
+        if isinstance(value, SCALAR_TYPES):
+            target[f'{prefix}{key}'] = value
+        elif isinstance(value, dict):
+            add_prefixed_scalars(target, prefix, value)
 
 
 def load_daily_summaries():
-    """Read the per-day daily summary JSONs into flat rows."""
-    rows = []
+    """
+    Read the per-day daily summary JSONs; returns {calendarDate: flat scalars}.
+    """
+    summaries = {}
     for filename in sorted(glob(os.path.join(EXPORT_DIR, 'health', 'daily', '*_daily_summary.json'))):
         with open(filename, encoding='utf-8') as summary_json:
             summary = json.load(summary_json)
-        flat = flatten_scalars(summary)
-        if not flat.get('calendarDate'):
+        day = summary.get('calendarDate')
+        if not day:
             continue
-        flat['importKey'] = f"daily:{flat['calendarDate']}"
-        rows.append(flat)
-    return rows
+        flat = {key: value for key, value in summary.items() if isinstance(value, SCALAR_TYPES)}
+        summaries[day] = flat
+    return summaries
 
 
-def load_weight_measurements():
-    """Read the weight range JSON into one row per measurement."""
-    rows = []
-    filename = os.path.join(EXPORT_DIR, 'health', 'weight.json')
-    if not os.path.isfile(filename):
-        return rows
-    with open(filename, encoding='utf-8') as weight_json:
+def load_range_entries(prefix, filename):
+    """
+    Read a range JSON (a list of per-day entries, or a dict with such a list)
+    and return {calendarDate: prefixed scalar fields}.
+    """
+    path = os.path.join(EXPORT_DIR, 'health', filename)
+    if not os.path.isfile(path):
+        return {}
+    with open(path, encoding='utf-8') as range_json:
+        data = json.load(range_json)
+    if isinstance(data, dict):
+        data = data.get('hrvSummaries') or []
+    entries = {}
+    for item in data:
+        day = item.get('calendarDate')
+        if not day:
+            continue
+        entry = {}
+        add_prefixed_scalars(entry, prefix, item)
+        entries[day] = entry
+    return entries
+
+
+def load_weight_per_day():
+    """
+    Read the weight range JSON and return {calendarDate: prefixed fields} with
+    at most ONE measurement per day: the last one of that day.
+    """
+    path = os.path.join(EXPORT_DIR, 'health', 'weight.json')
+    if not os.path.isfile(path):
+        return {}
+    with open(path, encoding='utf-8') as weight_json:
         weight_data = json.load(weight_json)
+    latest = {}
     for summary in weight_data.get('dailyWeightSummaries', []):
         for measurement in summary.get('allWeightMetrics', []):
-            flat = flatten_scalars(measurement)
-            if not flat:
+            day = measurement.get('calendarDate') or measurement.get('date')
+            if not day:
                 continue
-            key = f"weight:{flat.get('date', '')}:{flat.get('datetimeUtc', flat.get('time', ''))}"
-            flat['importKey'] = key
-            rows.append(flat)
-    return rows
+            stamp = measurement.get('datetimeUtc') or measurement.get('time') or ''
+            if day not in latest or stamp >= latest[day][0]:
+                latest[day] = (stamp, measurement)
+    entries = {}
+    for day, (_, measurement) in latest.items():
+        entry = {}
+        add_prefixed_scalars(entry, 'weight_', measurement)
+        entries[day] = entry
+    return entries
+
+
+def load_daily_rows():
+    """Combine all health sources into one flat row per calendar day."""
+    days = {}
+    sources = [load_daily_summaries()]
+    for prefix, filename in RANGE_FILES.items():
+        sources.append(load_range_entries(prefix, filename))
+    sources.append(load_weight_per_day())
+
+    for source in sources:
+        for day, fields in source.items():
+            days.setdefault(day, {}).update(fields)
+    for day, row in days.items():
+        row.setdefault('calendarDate', day)
+        row['importKey'] = f'daily:{day}'
+    return [days[day] for day in sorted(days)]
 
 
 def main():
@@ -169,8 +240,7 @@ def main():
     if not os.path.isdir(os.path.join(EXPORT_DIR, 'health')):
         sys.exit(f'No health data found in {EXPORT_DIR!r} (run gcexport.py --health first)')
 
-    import_rows(TABLE_DAILY, load_daily_summaries())
-    import_rows(TABLE_WEIGHT, load_weight_measurements())
+    import_rows(TABLE, load_daily_rows())
     logging.info('Budibase import finished')
 
 
