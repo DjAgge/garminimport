@@ -22,12 +22,27 @@ services:
       HEALTH_DAYS: "2"
       # Budibase (self-hosted) - only needed for the import step;
       # leave BUDIBASE_API_KEY empty to disable the Budibase import
+      # BUDIBASE_URL must be reachable from this container; when the stack is
+      # attached to the Budibase stack's network (see networks below), the
+      # URL is http://<budibase-service-name>:<container-port>
       BUDIBASE_URL: ""
       BUDIBASE_API_KEY: ""
       BUDIBASE_TABLE: "Health Daily"
     volumes:
       # persistent storage for the OAuth tokens and the exports
       - garmin-data:/data
+    networks:
+      - budibase
 
 volumes:
   garmin-data:
+
+networks:
+  # attach the scheduler to the network of the Budibase stack so the import
+  # can reach Budibase directly; set BUDIBASE_URL accordingly, e.g.
+  # http://budibase:80 (service name and container port of the Budibase stack).
+  # Remove this section (and the networks key of the service) if your
+  # Budibase runs elsewhere; then point BUDIBASE_URL at that host instead.
+  budibase:
+    name: budibase_default
+    external: true
