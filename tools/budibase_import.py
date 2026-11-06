@@ -25,7 +25,11 @@ Configuration via environment variables:
 
     BUDIBASE_URL          base URL of the Budibase instance, e.g.
                           http://budibase:8080 or https://bb.example.com
-    BUDIBASE_API_KEY      API key of the Budibase app (Settings → API keys)
+    BUDIBASE_API_KEY      API key of the Budibase user (user menu → API key)
+    BUDIBASE_APP_ID       ID of the Budibase app/workspace the table lives in
+                          (from the builder URL, /builder/workspace/<id>/);
+                          use the published ID (without "_dev_") for
+                          published apps, e.g. app_641843cd1c254cf096fb059a68f32405
     BUDIBASE_TABLE        table for the daily rows (default "Health Daily")
     EXPORT_DIR            gcexport output directory containing health/
     DRY_RUN               set to 1 to only print what would be imported
@@ -48,6 +52,7 @@ except ImportError:  # pragma: no cover
 
 BUDIBASE_URL = os.environ.get('BUDIBASE_URL', '').rstrip('/')
 BUDIBASE_API_KEY = os.environ.get('BUDIBASE_API_KEY', '')
+APP_ID = os.environ.get('BUDIBASE_APP_ID', '')
 TABLE = os.environ.get('BUDIBASE_TABLE', 'Health Daily')
 EXPORT_DIR = os.environ.get('EXPORT_DIR', '.')
 DRY_RUN = os.environ.get('DRY_RUN', '') == '1'
@@ -72,8 +77,9 @@ def api(method, path, json_body=None):
     """Call the Budibase v1 REST API and return the parsed JSON response."""
     resp = http.request(
         method,
-        f'{BUDIBASE_URL}/api/v1{path}',
-        headers={'x-budibase-api-key': BUDIBASE_API_KEY},
+        f'{BUDIBASE_URL}/api/public/v1{path}',
+        headers={'x-budibase-api-key': BUDIBASE_API_KEY,
+                 'x-budibase-app-id': APP_ID},
         json=json_body,
     )
     if resp.status_code not in (200, 201):
@@ -237,6 +243,9 @@ def main():
     logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
     if not BUDIBASE_URL or not BUDIBASE_API_KEY:
         sys.exit('BUDIBASE_URL and BUDIBASE_API_KEY must be set')
+    if not APP_ID:
+        sys.exit('BUDIBASE_APP_ID must be set (from the builder URL, '
+                 '/builder/workspace/<id>/)')
     if not os.path.isdir(os.path.join(EXPORT_DIR, 'health')):
         sys.exit(f'No health data found in {EXPORT_DIR!r} (run gcexport.py --health first)')
 
