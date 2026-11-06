@@ -2,14 +2,14 @@
 #
 # First run (interactive, for the initial login with password + MFA):
 #   docker compose build
-#   docker compose run --rm garmin-export sh extras/run_daily.sh
+#   docker compose run --rm garmin-export sh tools/run_daily.sh
 #
 # Daily runs (no interaction, reuses the cached tokens):
-#   docker compose run --rm garmin-export sh extras/run_daily.sh
+#   docker compose run --rm garmin-export sh tools/run_daily.sh
 # Schedule this line with your NAS scheduler (e.g. Synology Task Scheduler)
 # or wrap it in your own cron container.
 #
-# The Budibase import is part of extras/run_daily.sh; configure it with the
+# The Budibase import is part of tools/run_daily.sh; configure it with the
 # BUDIBASE_* environment variables below.
 
 services:

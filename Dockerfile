@@ -6,8 +6,8 @@ WORKDIR /app
 
 COPY gcexport.py garmin_tls_patch.py filtering.py ./
 COPY csv_header_*.properties ./
-COPY extras/ extras/
+COPY tools/ tools/
 
 # One-shot container: runs gcexport.py (and optionally the Budibase import
-# via extras/run_daily.sh), so the host/NAS scheduler decides when it runs.
+# via tools/run_daily.sh), so the host/NAS scheduler decides when it runs.
 ENTRYPOINT ["python3", "gcexport.py"]

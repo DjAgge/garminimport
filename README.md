@@ -157,20 +157,20 @@ export on a NAS:
 ```bash
 docker compose build
 # first run: interactive login (password + MFA), stores the tokens in ./data
-docker compose run --rm garmin-export sh extras/run_daily.sh
+docker compose run --rm garmin-export sh tools/run_daily.sh
 # daily runs: no interaction, reuses the cached tokens
-docker compose run --rm garmin-export sh extras/run_daily.sh
+docker compose run --rm garmin-export sh tools/run_daily.sh
 ```
 
 Schedule the second line with your NAS scheduler (e.g. Synology Task
-Scheduler). `extras/run_daily.sh` exports the activities and the health data of
+Scheduler). `tools/run_daily.sh` exports the activities and the health data of
 the last 2 days (`--health 2`) and then runs the Budibase import (see below) if
 `BUDIBASE_API_KEY` is configured. The OAuth tokens live in `./data` so that
 later runs need no login and no MFA code.
 
 ### Budibase Import (health data)
 
-`extras/budibase_import.py` pushes the exported health data into the internal
+`tools/budibase_import.py` pushes the exported health data into the internal
 database of a self-hosted [Budibase](https://budibase.com) instance via its
 REST API:
 

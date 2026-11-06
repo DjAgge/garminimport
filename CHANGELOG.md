@@ -27,9 +27,9 @@ agent); the older entries are the history of the upstream repository
 - added: new option `--tokenfile` (default `~/.gcexport_tokens.json`) for
   caching the OAuth tokens; later runs skip the SSO login and thus the MFA
   prompt, an expired access token is renewed from the OAuth1 token
-- added: `Dockerfile`, `docker-compose.yml` and `extras/run_daily.sh` for a
+- added: `Dockerfile`, `docker-compose.yml` and `tools/run_daily.sh` for a
   daily scheduled export on a NAS
-- added: `extras/budibase_import.py` to push the exported health data into
+- added: `tools/budibase_import.py` to push the exported health data into
   a self-hosted Budibase instance (auto-creates tables, imports without
   duplicates)
 
