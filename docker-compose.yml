@@ -33,9 +33,12 @@ services:
       # BUDIBASE_URL must be reachable from this container; when the stack is
       # attached to the Budibase stack's network (see networks below), the
       # URL is http://<budibase-service-name>:<container-port>
-      BUDIBASE_URL: ""
-      BUDIBASE_API_KEY: ""
-      BUDIBASE_TABLE: "Health Daily"
+      # values are injected from the stack's environment variables in
+      # Portainer (set BUDIBASE_URL and BUDIBASE_API_KEY there); leaving them
+      # unset in Portainer disables the Budibase import
+      BUDIBASE_URL: "${BUDIBASE_URL:-}"
+      BUDIBASE_API_KEY: "${BUDIBASE_API_KEY:-}"
+      BUDIBASE_TABLE: "${BUDIBASE_TABLE:-Health Daily}"
     volumes:
       # persistent storage for the OAuth tokens and the exports
       - garmin-data:/data
