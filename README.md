@@ -149,6 +149,44 @@ absent or completely expired. The token file is stored with owner-only
 permissions; for scheduled/Docker runs it should live on a persistent volume.
 
 
+### Docker / NAS (daily scheduled export)
+
+The repository ships a `Dockerfile` and a `docker-compose.yml` for running the
+export on a NAS:
+
+```bash
+docker compose build
+# first run: interactive login (password + MFA), stores the tokens in ./data
+docker compose run --rm garmin-export sh extras/run_daily.sh
+# daily runs: no interaction, reuses the cached tokens
+docker compose run --rm garmin-export sh extras/run_daily.sh
+```
+
+Schedule the second line with your NAS scheduler (e.g. Synology Task
+Scheduler). `extras/run_daily.sh` exports the activities and the health data of
+the last 2 days (`--health 2`) and then runs the Budibase import (see below) if
+`BUDIBASE_API_KEY` is configured. The OAuth tokens live in `./data` so that
+later runs need no login and no MFA code.
+
+### Budibase Import (health data)
+
+`extras/budibase_import.py` pushes the exported health data into the internal
+database of a self-hosted [Budibase](https://budibase.com) instance via its
+REST API:
+
+- one row per day from the daily summaries (steps, calories, resting heart
+  rate, body battery, ...) into the table "Health Daily"
+- one row per weighing from `weight.json` into the table "Health Weight"
+- tables and columns are created automatically if they do not exist yet
+- rows carry an `importKey`; repeated runs never import duplicates
+
+Configuration is done via environment variables (`BUDIBASE_URL`,
+`BUDIBASE_API_KEY`, `EXPORT_DIR`, see the script header for all options); set
+`DRY_RUN=1` to preview what would be imported. In `docker-compose.yml` the
+import runs automatically after the export; leave `BUDIBASE_API_KEY` empty to
+disable it.
+
+
 ### Health Data
 
 With `--health DAYS` the daily health data of the last DAYS days is exported
