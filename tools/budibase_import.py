@@ -94,7 +94,8 @@ def ensure_table(table_name, rows):
     """
     if DRY_RUN:
         return f'dry-run-{table_name}'
-    for table in api('GET', '/tables').get('data', []):
+    result = api('POST', '/tables/search', {'name': table_name})
+    for table in result.get('data', []):
         if table['name'] == table_name:
             return table['_id']
 
@@ -109,7 +110,7 @@ def ensure_table(table_name, rows):
                 else:
                     schema[key] = {'type': 'string'}
     logging.info('Creating Budibase table %s with %d columns', table_name, len(schema))
-    return api('POST', '/tables', {'name': table_name, 'schema': schema})['_id']
+    return api('POST', '/tables', {'name': table_name, 'schema': schema})['data']['_id']
 
 
 def existing_import_keys(table_id):
@@ -121,7 +122,7 @@ def existing_import_keys(table_id):
         if search_after:
             body['bookmark'] = search_after
         result = api('POST', f'/tables/{table_id}/rows/search', body)
-        for row in result.get('rows', []):
+        for row in result.get('data', []):
             if 'importKey' in row:
                 keys.add(row['importKey'])
         if not result.get('hasNextPage'):
