@@ -1,0 +1,28 @@
+# Daily Garmin Connect export for the NAS.
+#
+# First run (interactive, for the initial login with password + MFA):
+#   docker compose build
+#   docker compose run --rm garmin-export sh tools/run_daily.sh
+#
+# Daily runs (no interaction, reuses the cached tokens):
+#   docker compose run --rm garmin-export sh tools/run_daily.sh
+# Schedule this line with your NAS scheduler (e.g. Synology Task Scheduler)
+# or wrap it in your own cron container.
+#
+# The Budibase import is part of tools/run_daily.sh; configure it with the
+# BUDIBASE_* environment variables below.
+
+services:
+  garmin-export:
+    build: .
+    restart: "no"
+    environment:
+      # Budibase (self-hosted) - only needed for the import step
+      BUDIBASE_URL: "http://budibase:8080"
+      BUDIBASE_API_KEY: ""
+      BUDIBASE_TABLE: "Health Daily"
+      # leave empty to disable the Budibase import
+      # BUDIBASE_API_KEY: ""
+    volumes:
+      # persistent storage for the OAuth tokens (avoids MFA prompts)
+      - ./data:/data

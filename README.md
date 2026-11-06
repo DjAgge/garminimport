@@ -149,6 +149,52 @@ absent or completely expired. The token file is stored with owner-only
 permissions; for scheduled/Docker runs it should live on a persistent volume.
 
 
+### Docker / NAS (daily scheduled export)
+
+The repository ships a `Dockerfile` and a `docker-compose.yml` for running the
+export on a NAS:
+
+```bash
+docker compose build
+# first run: interactive login (password + MFA), stores the tokens in ./data.
+# Fetch more days for an initial history, e.g. the last 60:
+#   HEALTH_DAYS=60 docker compose run --rm garmin-export sh tools/run_daily.sh
+docker compose run --rm garmin-export sh tools/run_daily.sh
+# daily runs: no interaction, reuses the cached tokens
+docker compose run --rm garmin-export sh tools/run_daily.sh
+```
+
+Schedule the second line with your NAS scheduler (e.g. Synology Task
+Scheduler). `tools/run_daily.sh` exports the activities and the health data of
+the last 2 days (`--health 2`) and then runs the Budibase import (see below) if
+`BUDIBASE_API_KEY` is configured. The OAuth tokens live in `./data` so that
+later runs need no login and no MFA code.
+
+### Budibase Import (health data)
+
+`tools/budibase_import.py` pushes the exported health data into the internal
+database of a self-hosted [Budibase](https://budibase.com) instance via its
+REST API:
+
+- everything is combined into **one row per calendar day** in one table
+  ("Health Daily"), so the data is uniformly day-based
+- included per day: the daily summary (steps, calories, resting heart rate,
+  body battery, ...), stress, intensity minutes, hydration, sleep score, HRV
+  and **at most one weight measurement per day** (the last one of the day)
+- fields from the range statistics are prefixed with their source (e.g.
+  `stress_avg`, `sleepScore_value`, `hrv_lastNightAvg`), weight fields with
+  `weight_` (e.g. `weight_weight`, `weight_bmi`)
+- the table and its columns are created automatically if they do not exist
+- rows carry an `importKey` (`daily:<date>`); repeated runs never import
+  duplicates
+
+Configuration is done via environment variables (`BUDIBASE_URL`,
+`BUDIBASE_API_KEY`, `EXPORT_DIR`, see the script header for all options); set
+`DRY_RUN=1` to preview what would be imported. In `docker-compose.yml` the
+import runs automatically after the export; leave `BUDIBASE_API_KEY` empty to
+disable it.
+
+
 ### Health Data
 
 With `--health DAYS` the daily health data of the last DAYS days is exported
