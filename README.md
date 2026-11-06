@@ -149,26 +149,42 @@ absent or completely expired. The token file is stored with owner-only
 permissions; for scheduled/Docker runs it should live on a persistent volume.
 
 
-### Docker / NAS (daily scheduled export)
+### Docker / NAS / Portainer (daily scheduled export)
 
 The repository ships a `Dockerfile` and a `docker-compose.yml` for running the
-export on a NAS:
+export on a NAS. The stack consists of one long-lived container that triggers
+the export once a day (default 06:00, `RUN_TIME`) and then runs the Budibase
+import. The OAuth tokens and the exports live on the named volume
+`garmin-data`, so later runs need no login and no MFA code.
 
-```bash
-docker compose build
-# first run: interactive login (password + MFA), stores the tokens in ./data.
-# Fetch more days for an initial history, e.g. the last 60:
-#   HEALTH_DAYS=60 docker compose run --rm garmin-export sh tools/run_daily.sh
-docker compose run --rm garmin-export sh tools/run_daily.sh
-# daily runs: no interaction, reuses the cached tokens
-docker compose run --rm garmin-export sh tools/run_daily.sh
+**Deploy with Portainer:** Stacks → Add stack → Repository, use this repository
+with the compose path `docker-compose.yml`, and set the environment variables
+(`BUDIBASE_URL`, `BUDIBASE_API_KEY`, optionally `RUN_TIME`, `TZ`, `HEALTH_DAYS`)
+in the stack's "Environment variables" section. Deploy the stack.
+
+**First login (once, interactive password + MFA):** open the console of the
+`garmin-scheduler` container in Portainer (or `docker exec -it <container> sh`)
+and run:
+
+```sh
+python3 gcexport.py --username <email> --tokenfile /data/tokens.json -d /data/export --health 60
 ```
 
-Schedule the second line with your NAS scheduler (e.g. Synology Task
-Scheduler). `tools/run_daily.sh` exports the activities and the health data of
-the last 2 days (`--health 2`) and then runs the Budibase import (see below) if
-`BUDIBASE_API_KEY` is configured. The OAuth tokens live in `./data` so that
-later runs need no login and no MFA code.
+This also fetches the last 60 days of health data as the initial history
+(the 60 days then end up in Budibase as history). Alternatively you can copy an
+existing token file from another machine into the volume.
+
+**Manual runs** (also from the container console):
+
+```sh
+HEALTH_DAYS=60 sh tools/run_daily.sh   # e.g. fetch more history once
+sh tools/run_daily.sh                  # normal run like the daily schedule
+```
+
+The daily schedule runs `tools/run_daily.sh` via `tools/run_loop.sh`: it
+exports the activities and the last `HEALTH_DAYS` days (default 2) of health
+data and then runs the Budibase import (see below) if `BUDIBASE_API_KEY` is
+configured. A failed run is logged and retried the next day.
 
 ### Budibase Import (health data)
 

@@ -1,28 +1,33 @@
-# Daily Garmin Connect export for the NAS.
+# Daily Garmin Connect export for the NAS, managed e.g. with Portainer.
 #
-# First run (interactive, for the initial login with password + MFA):
-#   docker compose build
-#   docker compose run --rm garmin-export sh tools/run_daily.sh
+# Deploy in Portainer: Stacks -> Add stack -> Repository, point it at this
+# repository and the compose file docker-compose.yml, then set the environment
+# variables below in the stack's "Environment variables" section.
 #
-# Daily runs (no interaction, reuses the cached tokens):
-#   docker compose run --rm garmin-export sh tools/run_daily.sh
-# Schedule this line with your NAS scheduler (e.g. Synology Task Scheduler)
-# or wrap it in your own cron container.
-#
-# The Budibase import is part of tools/run_daily.sh; configure it with the
-# BUDIBASE_* environment variables below.
+# The stack runs one long-lived container (garmin-scheduler) that triggers the
+# export once a day at RUN_TIME and then imports the health data into
+# Budibase. Manual runs (initial history, fresh login) are done from the
+# container console, see README.md.
 
 services:
-  garmin-export:
+  garmin-scheduler:
     build: .
-    restart: "no"
+    restart: unless-stopped
     environment:
-      # Budibase (self-hosted) - only needed for the import step
-      BUDIBASE_URL: "http://budibase:8080"
+      # when to run the daily export (container time; set TZ accordingly)
+      RUN_TIME: "06:00"
+      TZ: "Europe/Berlin"
+      # how many days of health data to fetch (2 for daily operation;
+      # raise e.g. to 60 once for the initial history)
+      HEALTH_DAYS: "2"
+      # Budibase (self-hosted) - only needed for the import step;
+      # leave BUDIBASE_API_KEY empty to disable the Budibase import
+      BUDIBASE_URL: ""
       BUDIBASE_API_KEY: ""
       BUDIBASE_TABLE: "Health Daily"
-      # leave empty to disable the Budibase import
-      # BUDIBASE_API_KEY: ""
     volumes:
-      # persistent storage for the OAuth tokens (avoids MFA prompts)
-      - ./data:/data
+      # persistent storage for the OAuth tokens and the exports
+      - garmin-data:/data
+
+volumes:
+  garmin-data:
