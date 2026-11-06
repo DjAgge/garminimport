@@ -104,11 +104,11 @@ def ensure_table(table_name, rows):
         for key, value in row.items():
             if key not in schema:
                 if isinstance(value, bool):
-                    schema[key] = {'type': 'boolean'}
+                    schema[key] = {'type': 'boolean', 'name': key}
                 elif isinstance(value, (int, float)):
-                    schema[key] = {'type': 'number'}
+                    schema[key] = {'type': 'number', 'name': key}
                 else:
-                    schema[key] = {'type': 'string'}
+                    schema[key] = {'type': 'string', 'name': key}
     logging.info('Creating Budibase table %s with %d columns', table_name, len(schema))
     return api('POST', '/tables', {'name': table_name, 'schema': schema})['data']['_id']
 
