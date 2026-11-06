@@ -156,7 +156,9 @@ export on a NAS:
 
 ```bash
 docker compose build
-# first run: interactive login (password + MFA), stores the tokens in ./data
+# first run: interactive login (password + MFA), stores the tokens in ./data.
+# Fetch more days for an initial history, e.g. the last 60:
+#   HEALTH_DAYS=60 docker compose run --rm garmin-export sh tools/run_daily.sh
 docker compose run --rm garmin-export sh tools/run_daily.sh
 # daily runs: no interaction, reuses the cached tokens
 docker compose run --rm garmin-export sh tools/run_daily.sh
