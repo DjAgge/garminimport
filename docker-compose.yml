@@ -38,6 +38,7 @@ services:
       # unset in Portainer disables the Budibase import
       BUDIBASE_URL: "${BUDIBASE_URL:-}"
       BUDIBASE_API_KEY: "${BUDIBASE_API_KEY:-}"
+      BUDIBASE_APP_ID: "${BUDIBASE_APP_ID:-}"
       BUDIBASE_TABLE: "${BUDIBASE_TABLE:-Health Daily}"
     volumes:
       # persistent storage for the OAuth tokens and the exports
