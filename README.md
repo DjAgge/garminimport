@@ -10,7 +10,8 @@ and tested live against Garmin Connect in a supervised AI session.
 ## What's different in this fork
 
 The upstream script no longer worked against Garmin Connect at all (Garmin now rejects non-browser TLS
-fingerprints and has moved all endpoints). This fork fixes that and adds health data export:
+fingerprints and has moved all endpoints). This fork fixes that and adds health data export, token caching
+and a Docker stack for scheduled runs:
 
 - **Modern SSO/OAuth login** with browser TLS imitation via
   [curl_cffi](https://github.com/lexiforest/curl_cffi) (new runtime dependency), including support for
@@ -21,22 +22,32 @@ fingerprints and has moved all endpoints). This fork fixes that and adds health 
   URLs answer with HTML)
 - **Token caching** (`--tokenfile`, default `~/.gcexport_tokens.json`): later runs skip the login and
   thus the MFA prompt; expired access tokens are renewed from the OAuth1 token
-- **Health data export** (`--health DAYS`): daily steps, stress, intensity minutes, hydration, sleep
-  (score and detailed data), heart rate variability, weight and body battery as JSON files
+- **Health data export** (`--health DAYS`): daily summaries, steps, stress, intensity minutes,
+  hydration, sleep (score and detailed data), heart rate variability, weight and body battery as JSON
+  files
+- **Docker stack** (`Dockerfile`, `docker-compose.yml`, `tools/`): self-contained container with a
+  built-in daily scheduler for NAS/Portainer operation
+- **Budibase import** (`tools/budibase_import.py`): pushes the exported health data into the internal
+  database of a self-hosted [Budibase](https://budibase.com) instance — one combined row per day
 - Error messages now include Garmin's response body (status code and text) for much easier diagnosis
 
 See [CHANGELOG.md](./CHANGELOG.md) for the detailed list of changes.
 
 
-:exclamation: | This script [now requires Python 3.8 or newer](https://github.com/pe-st/garmin-connect-export/issues/64)
+:exclamation: | This script [requires Python 3.8 or newer](https://github.com/pe-st/garmin-connect-export/issues/64)
 ---|---
 
 :exclamation: | There is a [report of a deactivated user account that might by caused by using this script](https://github.com/pe-st/garmin-connect-export/issues/60). The exact reasons are not known, and the upstream author's account has never been deactivated. But be aware that no guarantee can be given that Garmin tolerates requests made from this script. The script is believed to be fair use (it doesn't do anything other than automating stuff that you do in the browser). But be careful if you plan to run the script as periodical task (with `cron` etc)
 ---|---
 
-Download a copy of your Garmin Connect data, including stats and GPX tracks.
+Download a copy of your personal Garmin Connect data: activity records and GPX/TCX/original/JSON files,
+plus your daily health data (steps, stress, sleep, HRV, weight, ...).
 
-Note that Garmin introduced a while ago (around May 2018, for GDPR compatibility) a possibility to [download all of your Garmin Connect data](https://www.garmin.com/en-US/account/datamanagement/exportdata/) in one zip file. Depending on your needs this might be enough, but the script here offers additional features like getting GPX tracks instead of the original upload format or limiting the export to just a couple of activities.
+Note that Garmin introduced a while ago (around May 2018, for GDPR compatibility) a possibility to
+[download all of your Garmin Connect data](https://www.garmin.com/en-US/account/datamanagement/exportdata/)
+in one zip file. Depending on your needs this might be enough, but the script here offers additional
+features like getting GPX tracks instead of the original upload format, limiting the export to just a
+couple of activities, incrementally skipping already downloaded files, and the health data export.
 
 ## Forks and Branches
 
@@ -55,26 +66,46 @@ There exist many [forks](https://help.github.com/articles/fork-a-repo/) of this 
   The original repo (mother repo) of **pe-st**'s repo. It seems not maintained anymore (last commit in 2015, see also: [pr#42](https://github.com/kjkjava/garmin-connect-export/pull/42) and [issues#46](https://github.com/kjkjava/garmin-connect-export/issues/46))
 - [moderation](https://github.com/moderation/garmin-connect-export)
   After some inactivity of the **@kjkjava** repo, **@moderation** made some corrections in his own fork to have a working script again. His fork is primarily designed for his use which is cycling, while **pe-st**'s is running.
-  In March 2018 I integrated **@moderation**'s work into my own repo, so logically **@moderation** is now the
-  father repo of my repo. In April 2018 **@moderation** migrated his script to Python 3. Unfortunately
-  **@moderation**'s script [didn't work for me for a couple of months](https://github.com/moderation/garmin-connect-export/issues/11),
+  In March 2018 **pe-st** integrated **@moderation**'s work into his own repo, so logically **@moderation** is now the
+  father repo of **pe-st**'s repo. In April 2018 **@moderation** migrated his script to Python 3. Unfortunately
+  **@moderation**'s script [didn't work for **pe-st** for a couple of months](https://github.com/moderation/garmin-connect-export/issues/11),
   probably because of different Garmin Connect REST endpoints (URLs).
 
 For the [branches](https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging) in **pe-st**'s repo see [BRANCH.md](BRANCH.md)
 
 ## Description
 
-This script will backup your personal Garmin Connect data. All downloaded data will go into a directory called `YYYY-MM-DD_garmin_connect_export/` in the current working directory. Activity records and details will go into a CSV file called `activities.csv`. GPX files (or whatever format you specify) containing track data, activity title, and activity descriptions are saved as well, using the Activity ID.
+This script will backup your personal Garmin Connect data. All downloaded data will go into a directory
+called `YYYY-MM-DD_garmin_connect_export/` in the current working directory (or the directory given
+with `-d`). Activity records and details will go into a CSV file called `activities.csv`. GPX files
+(or whatever format you specify) containing track data, activity title, and activity descriptions are
+saved as well, using the Activity ID.
 
 If there is no GPS track data (e.g., due to an indoor treadmill workout), a data file is still saved. If the GPX format is used, activity title and description data are saved. If the original format is used, Garmin may not provide a file at all and an empty file will be created. For activities where a GPX file was uploaded, Garmin may not have a TCX file available for download, so an empty file will be created. Since GPX is the only format Garmin should have for every activity, it is the default and preferred download format.
 
-If you have many activities, you may find that this script crashes with an "Operation timed out" message. Just run the script again and it will pick up where it left off.
+Already downloaded files are skipped on repeated runs, so the script can simply be run again after an
+interruption (e.g., an "Operation timed out" message with many activities) and will pick up where it
+left off.
+
+With `--health DAYS` the daily health data is exported as JSON files into the subdirectory `health/` of
+the output directory (see [Health Data](#health-data)).
 
 ## Installation
 
-- If you're comfortable using Git, just clone the repo from github
-- Otherwise get the latest `zip` (or `tar.gz`) from the [releases page](https://github.com/pe-st/garmin-connect-export/releases)
+- If you're comfortable using Git, just clone the repo from github:
+  `git clone https://github.com/DjAgge/garminimport.git`
+- Otherwise get the latest `zip` (or `tar.gz`) from the [releases page](https://github.com/DjAgge/garminimport/releases)
   and unpack it where it suits you.
+- The login requires the Python package [curl_cffi](https://github.com/lexiforest/curl_cffi)
+  (see [below](#python-and-curl_cffi)): `pip install curl_cffi`
+- On Debian/Ubuntu with Python 3.12+ `pip` refuses system-wide installations (PEP 668); the clean way
+  is a virtual environment:
+
+  ```bash
+  python3 -m venv .venv
+  source .venv/bin/activate
+  pip install curl_cffi
+  ```
 
 ## Usage
 
@@ -85,60 +116,90 @@ usage: gcexport.py [-h] [--version] [-v] [--username USERNAME]
                    [--password PASSWORD] [-c COUNT] [-e EXTERNAL] [-a ARGS]
                    [-f {gpx,tcx,original,json}] [-d DIRECTORY] [-s SUBDIR]
                    [-lp LOGPATH] [-u] [-ot] [--desc [DESC]] [-t TEMPLATE]
-                   [-fp] [-sa START_ACTIVITY_NO] [-ex FILE]
+                   [-fp] [--tokenfile TOKENFILE] [--health HEALTH]
+                   [-sa START_ACTIVITY_NO] [-ex FILE]
 
 Garmin Connect Exporter
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --version             print version and exit
-  -v, --verbosity       increase output and log verbosity, save more intermediate files
-  --username USERNAME   your Garmin Connect username or email address (otherwise, you will be prompted)
-  --password PASSWORD   your Garmin Connect password (otherwise, you will be prompted)
+  -v, --verbosity       increase output and log verbosity, save more
+                        intermediate files
+  --username USERNAME   your Garmin Connect username or email address
+                        (otherwise, you will be prompted)
+  --password PASSWORD   your Garmin Connect password (otherwise, you will be
+                        prompted)
   -c COUNT, --count COUNT
-                        number of recent activities to download, or 'all' (default: 1)
+                        number of recent activities to download, or 'all'
+                        (default: 1)
   -e EXTERNAL, --external EXTERNAL
                         path to external program to pass CSV file too
   -a ARGS, --args ARGS  additional arguments to pass to external program
   -f {gpx,tcx,original,json}, --format {gpx,tcx,original,json}
-                        export format; can be 'gpx', 'tcx', 'original' or 'json' (default: 'gpx')
+                        export format; can be 'gpx', 'tcx', 'original' or
+                        'json' (default: 'gpx')
   -d DIRECTORY, --directory DIRECTORY
-                        the directory to export to (default: './YYYY-MM-DD_garmin_connect_export')
+                        the directory to export to (default: './YYYY-MM-
+                        DD_garmin_connect_export')
   -s SUBDIR, --subdir SUBDIR
-                        the subdirectory for activity files (tcx, gpx etc.), supported placeholders are {YYYY} and {MM}
-                        (default: export directory)
+                        the subdirectory for activity files (tcx, gpx etc.),
+                        supported placeholders are {YYYY} and {MM} (default:
+                        export directory)
   -lp LOGPATH, --logpath LOGPATH
-                        the directory to store logfiles (default: same as for --directory)
-  -u, --unzip           if downloading ZIP files (format: 'original'), unzip the file and remove the ZIP file
-  -ot, --originaltime   will set downloaded (and possibly unzipped) file time to the activity start time
-  --desc [DESC]         append the activity's description to the file name of the download; limit size if number is given
+                        the directory to store logfiles (default: same as for
+                        --directory)
+  -u, --unzip           if downloading ZIP files (format: 'original'), unzip
+                        the file and remove the ZIP file
+  -ot, --originaltime   will set downloaded (and possibly unzipped) file time
+                        to the activity start time
+  --desc [DESC]         append the activity's description to the file name of
+                        the download; limit size if number is given
   -t TEMPLATE, --template TEMPLATE
                         template file with desired columns for CSV output
   -fp, --fileprefix     set the local time as activity file name prefix
+  --tokenfile TOKENFILE
+                        JSON file for caching the OAuth tokens, so that later
+                        runs skip the login (and the MFA prompt). Set to an
+                        empty string to disable the token file
+  --health HEALTH       export the daily health data (steps, stress, sleep,
+                        HRV, weight, ...) of the last HEALTH days as JSON
+                        files into the subdirectory "health" of the output
+                        directory
   -sa START_ACTIVITY_NO, --start_activity_no START_ACTIVITY_NO
-                        give index for first activity to import, i.e. skipping the newest activities
+                        give index for first activity to import, i.e. skipping
+                        the newest activities
   -ex FILE, --exclude FILE
-                        JSON file with Array of activity IDs to exclude from download.
-                        Format example: {"ids": ["6176888711"]}
+                        JSON file with Array of activity IDs to exclude from
+                        download. Format example: {"ids": ["6176888711"]}
 ```
 
 ### Examples
 
-- `python gcexport.py --count all`  
-  will download all of your data to a dated directory.
+- `python gcexport.py --count all`
+  will download all of your activities to a dated directory.
 
-- `python gcexport.py -c all -f gpx -ot --desc 20`  
-  will export all of your data in GPX format, set the timestamp of the GPX files to the start time of the activity and append the 20 first characters of the activity's description to the file name.
+- `python gcexport.py -c all -f gpx -ot --desc 20`
+  will export all of your activities in GPX format, set the timestamp of the GPX files to the start time of the activity and append the 20 first characters of the activity's description to the file name.
 
-- `python gcexport.py -c all -e /Applications/LibreOffice.app/Contents/MacOS/soffice -a calc`  
+- `python gcexport.py -c all -e /Applications/LibreOffice.app/Contents/MacOS/soffice -a calc`
   will download all of your data and then use LibreOffice to open the CSV file with the list of your activities (the path to LibreOffice is platform-specific; the example is for macOS).
 
-- `python gcexport.py -d ~/MyActivities -c 3 -f original -u --username bobbyjoe --password bestpasswordever1`  
-  will download your three most recent activities in the FIT file format (or whatever they were uploaded as) into the `~/MyActivities` directory (unless they already exist). Using the `--password` flags is not recommended because your password will be stored in your command line history. Instead, omit it to be prompted (and note that nothing will be displayed when you type your password). Equally you might not want to have the username stored in your command line history; in this case avoid also to give the `--username` option, and you'll be prompted for it. Note also that depending on the age of your garmin account your username is the email address (I myself still can login both with username and email address, but I've had a report that for some users the email address is mandatory to login).
+- `python gcexport.py -d ~/MyActivities -c 3 -f original -u --username bobbyjoe --password bestpasswordever1`
+  will download your three most recent activities in the FIT file format (or whatever they were uploaded as) into the `~/MyActivities` directory (unless they already exist). Using the `--password` flags is not recommended because your password will be stored in your command line history. Instead, omit it to be prompted (and note that nothing will be displayed when you type your password). Equally you might not want to have the username stored in your command line history; in this case avoid also to give the `--username` option, and you'll be prompted for it. Note also that depending on the age of your garmin account your username is the email address (for some users the email address is mandatory to login).
+
+- `python gcexport.py -c 5 -f gpx -v --health 30`
+  will export your five most recent activities as GPX files and the health data of the last 30 days
+  into the `health/` subdirectory. The first run asks for password (and MFA code if required); later
+  runs reuse the cached tokens without any prompt.
 
 Alternatively, you may run it with `./gcexport.py` if you set the file as executable (i.e., `chmod u+x gcexport.py`).
 
-### Token Caching (no MFA prompt on every run)
+### Login, MFA and Token Caching
+
+The login uses Garmin's modern SSO/OAuth flow with browser TLS imitation (see
+[Python and curl_cffi](#python-and-curl_cffi)). If your account requires multi-factor authentication,
+the script prompts for the MFA code (`MFA code (email|phone):`) when Garmin sends one.
 
 The OAuth tokens are cached in `~/.gcexport_tokens.json` (change with
 `--tokenfile`, disable with `--tokenfile ""`). Later runs reuse the cached
@@ -148,6 +209,23 @@ an MFA prompt. A full login (with MFA) is only needed when the tokens are
 absent or completely expired. The token file is stored with owner-only
 permissions; for scheduled/Docker runs it should live on a persistent volume.
 
+Note that Garmin rate limits repeated full logins (HTTP 429): avoid running
+many logins in a short time; with token caching this is rarely an issue.
+
+### Health Data
+
+With `--health DAYS` the daily health data of the last DAYS days is exported
+as JSON files into the subdirectory `health` of the output directory:
+
+- `steps.json`, `stress.json`, `intensity_minutes.json`, `hydration.json`,
+  `sleep_score.json`, `hrv.json`, `weight.json` — one file per category for the
+  whole date range (requests are automatically chunked to Garmin's 28-day
+  limit)
+- `daily/<date>_daily_summary.json`, `daily/<date>_sleep.json`,
+  `daily/<date>_body_battery.json` — one file per day
+
+Services that are unavailable or not used (e.g., no smart scale) are skipped
+with a warning. `--health 0` (the default) disables the health export.
 
 ### Docker / NAS / Portainer (daily scheduled export)
 
@@ -210,29 +288,16 @@ Configuration is done via environment variables (`BUDIBASE_URL`,
 import runs automatically after the export; leave `BUDIBASE_API_KEY` empty to
 disable it.
 
-
-### Health Data
-
-With `--health DAYS` the daily health data of the last DAYS days is exported
-as JSON files into the subdirectory `health` of the output directory:
-steps, stress, intensity minutes, hydration, sleep score, heart rate
-variability (HRV), weight, plus per-day daily summary, sleep data and body
-battery. Services that are unavailable or not used are skipped with a warning.
-
-
 ### Notes on the Usage
 
 - The `-c COUNT` option might appear to count wrongly when exporting multi-sport activities;
   they count as one activity, but the incrementing counter displayed on the console counts
   also the individual parts of a multi-sport activity
 
-
-### Python
+### Python and curl_cffi
 
 Of course, you must have Python installed to run this, any recent 3.x version should work
 (see also [Python 3.x Versions](./CONTRIBUTING.md#python-3x-versions)).
-
-### curl_cffi
 
 The login to Garmin Connect requires the [curl_cffi](https://github.com/lexiforest/curl_cffi)
 Python package (`pip install curl_cffi`): Garmin's SSO endpoints reject requests whose
@@ -240,25 +305,25 @@ TLS fingerprint does not look like a real browser, and curl_cffi provides that b
 TLS imitation. Login with multi-factor authentication (MFA) is supported; the script
 prompts for the MFA code when Garmin requires one.
 
-Most Mac and Linux users should already have Python.
-Note that if you run into the [TLSV1 ALERT problem](https://github.com/pe-st/garmin-connect-export/issues/16)
-or the [HTTP 403 Authentication Error](https://github.com/pe-st/garmin-connect-export/issues/59),
-your Python installation might not be recent enough.
-In this case you can install a more recent Python on your Mac using [Homebrew](https://docs.brew.sh/Homebrew-and-Python)
-and/or [pyenv](https://github.com/pyenv/pyenv).
+Most Mac and Linux users should already have Python. On Debian/Ubuntu with Python 3.12+
+use a virtual environment (see [Installation](#installation)).
 
 Also, as stated above, you should have some basic command line experience.
 
 
 ## Data
 
-This tool is not guaranteed to get all of your data, or even download it correctly. I have only tested it with my account and it works fine, but different account settings or different data types could potentially cause problems. Also, because this is not an official feature of Garmin Connect, Garmin may very well make changes that break this utility (and they certainly have since I created this project).
+This tool is not guaranteed to get all of your data, or even download it correctly. It has been tested
+with the maintainer's account and works fine, but different account settings or different data types
+could potentially cause problems. Also, because this is not an official feature of Garmin Connect,
+Garmin may very well make changes that break this utility (and they certainly have since this project
+was created).
 
-If you want to see all the raw data that Garmin hands to this script, just choose the JSON export format (`-f json`); in this case only metadata is exported, no track data.
+If you want to see all the raw data that Garmin hands to this script, just choose the JSON export format (`-f json`); in this case only metadata is exported, no track data. With `--verbosity` (or `-v`) the script additionally saves intermediate files (e.g., the raw activity list and the profile data) for inspection.
 
 The format of the CSV export file can be customized with template files (in Properties format, see the `--template` option); three examples are included:
 
-- `csv_header_default.properties` (the default) gives you my preferred selection of columns, mainly targeted at running and hiking
+- `csv_header_default.properties` (the default) gives you the maintainer's preferred selection of columns, mainly targeted at running and hiking
 - `csv_header_all.properties` gives you all available columns, handy as starting point for your own selection
 - `csv_header_moderation.properties` gives you the same output as **@moderation**'s fork, mainly targeted at cycling
 - `csv_header_kjkjava.properties` gives you an output similar as **@kjkjava**'s original script, mainly targeted at running
@@ -273,19 +338,26 @@ Some important columns explained:
 
 ## Garmin Connect API
 
-This script is for personal use only. It simulates a standard user session (i.e., in the browser), logging in using cookies and an authorization ticket. This makes the script pretty brittle. If you're looking for a more reliable option, particularly if you wish to use this for some production service, Garmin does offer a paid API service.
+This script is for personal use only. It simulates a standard user session (i.e., in the browser):
+the login goes through Garmin's SSO (with browser TLS imitation), the API requests carry an OAuth2
+bearer token obtained via Garmin's OAuth endpoints. This makes the script pretty brittle — when
+Garmin changes its login or endpoints, the script needs to be adapted. If you're looking for a more
+reliable option, particularly if you wish to use this for some production service, Garmin does offer
+a paid API service.
 
 More information about the API endpoints used in the script is available in [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## History
 
-The original project was written in PHP (formerly in the `old` directory, now deleted), based on "Garmin Connect export to Dailymile" code at <http://www.ciscomonkey.net/gc-to-dm-export/> (link has been down for a while). It no longer works due to the way Garmin handles logins. It could be updated, but I (**kjkjava**) decided to rewrite everything in Python for the latest version.
+The original project was written in PHP (formerly in the `old` directory, now deleted), based on "Garmin Connect export to Dailymile" code at <http://www.ciscomonkey.net/gc-to-dm-export/> (link has been down for a while). It no longer works due to the way Garmin handles logins. It could be updated, but **kjkjava** decided to rewrite everything in Python for the latest version.
 
 After 2015, when the original repo stopped being maintained, several forks from **kjkjava** started appearing (see
 Forks and Branches section above).
 
-In 2021 this fork was [detached from the original repo](https://github.com/pe-st/garmin-connect-export/issues/53);
+In 2021 **pe-st**'s repository was [detached from the original repo](https://github.com/pe-st/garmin-connect-export/issues/53);
 in what concerns Github, the repo isn't a fork anymore, but a new "original".
+This repository in turn is a fork of **pe-st**'s repo, updated for the current Garmin Connect
+(see [What's different in this fork](#whats-different-in-this-fork)).
 For the history of this fork see the [CHANGELOG](CHANGELOG.md)
 
 
@@ -321,8 +393,4 @@ see also [Contributors](https://github.com/pe-st/garmin-connect-export/graphs/co
 
 ## License
 
-[MIT](https://github.com/pe-st/garmin-connect-export/blob/master/LICENSE) &copy; 2015 Kyle Krafka and contributors
-
-## Thank You
-
-Thanks for using this script and I hope you find it as useful as I do! :smile:
+[MIT](./LICENSE) &copy; 2015 Kyle Krafka and contributors
