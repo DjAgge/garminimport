@@ -173,26 +173,42 @@ def load_daily_summaries():
     return summaries
 
 
+def _range_files(filename):
+    """
+    Yield every copy of a range JSON: the archived ones first (oldest first,
+    named <filename>.<timestamp>.json by run_daily.sh), then the current
+    file. Callers merge per calendarDate as they read, so newer copies
+    overwrite older entries for the same day.
+    """
+    archived = sorted(glob(os.path.join(EXPORT_DIR, 'health', 'archive',
+                                         f'{filename}.*.json')))
+    current = os.path.join(EXPORT_DIR, 'health', filename)
+    for path in archived:
+        yield path
+    if os.path.isfile(current):
+        yield current
+
+
 def load_range_entries(prefix, filename):
     """
     Read a range JSON (a list of per-day entries, or a dict with such a list)
-    and return {calendarDate: prefixed scalar fields}.
+    and return {calendarDate: prefixed scalar fields}. Archived copies from
+    earlier export runs are merged in, so history that the daily runs no
+    longer fetch (HEALTH_DAYS) is not lost.
     """
-    path = os.path.join(EXPORT_DIR, 'health', filename)
-    if not os.path.isfile(path):
-        return {}
-    with open(path, encoding='utf-8') as range_json:
-        data = json.load(range_json)
-    if isinstance(data, dict):
-        data = data.get('hrvSummaries') or []
     entries = {}
-    for item in data:
-        day = item.get('calendarDate')
-        if not day:
-            continue
-        entry = {}
-        add_prefixed_scalars(entry, prefix, item)
-        entries[day] = entry
+    for path in _range_files(filename):
+        with open(path, encoding='utf-8') as range_json:
+            data = json.load(range_json)
+        if isinstance(data, dict):
+            data = data.get('hrvSummaries') or []
+        for item in data:
+            day = item.get('calendarDate')
+            if not day:
+                continue
+            entry = {}
+            add_prefixed_scalars(entry, prefix, item)
+            entries[day] = entry
     return entries
 
 
@@ -203,22 +219,22 @@ WEIGHT_GRAM_FIELDS = {'weight_weight', 'weight_weightDelta'}
 def load_weight_per_day():
     """
     Read the weight range JSON and return {calendarDate: prefixed fields} with
-    at most ONE measurement per day: the last one of that day.
+    at most ONE measurement per day: the last one of that day. Archived copies
+    from earlier export runs are merged in so the weight history survives
+    daily runs with a small HEALTH_DAYS window.
     """
-    path = os.path.join(EXPORT_DIR, 'health', 'weight.json')
-    if not os.path.isfile(path):
-        return {}
-    with open(path, encoding='utf-8') as weight_json:
-        weight_data = json.load(weight_json)
     latest = {}
-    for summary in weight_data.get('dailyWeightSummaries', []):
-        for measurement in summary.get('allWeightMetrics', []):
-            day = measurement.get('calendarDate') or measurement.get('date')
-            if not day:
-                continue
-            stamp = measurement.get('datetimeUtc') or measurement.get('time') or ''
-            if day not in latest or stamp >= latest[day][0]:
-                latest[day] = (stamp, measurement)
+    for path in _range_files('weight.json'):
+        with open(path, encoding='utf-8') as weight_json:
+            weight_data = json.load(weight_json)
+        for summary in weight_data.get('dailyWeightSummaries', []):
+            for measurement in summary.get('allWeightMetrics', []):
+                day = measurement.get('calendarDate') or measurement.get('date')
+                if not day:
+                    continue
+                stamp = measurement.get('datetimeUtc') or measurement.get('time') or ''
+                if day not in latest or stamp >= latest[day][0]:
+                    latest[day] = (stamp, measurement)
     entries = {}
     for day, (_, measurement) in latest.items():
         entry = {}
