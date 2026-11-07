@@ -196,6 +196,10 @@ def load_range_entries(prefix, filename):
     return entries
 
 
+# Garmin supplies these weight fields in grams; store them in kilograms
+WEIGHT_GRAM_FIELDS = {'weight_weight', 'weight_weightDelta'}
+
+
 def load_weight_per_day():
     """
     Read the weight range JSON and return {calendarDate: prefixed fields} with
@@ -219,6 +223,9 @@ def load_weight_per_day():
     for day, (_, measurement) in latest.items():
         entry = {}
         add_prefixed_scalars(entry, 'weight_', measurement)
+        for key in WEIGHT_GRAM_FIELDS:
+            if key in entry and isinstance(entry[key], (int, float)):
+                entry[key] = entry[key] / 1000
         entries[day] = entry
     return entries
 
