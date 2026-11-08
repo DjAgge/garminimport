@@ -15,9 +15,9 @@ Description:    Unit tests for the OAuth1 signing in garmin_tls_patch.py.
                 when oauthlib is not installed.
 """
 
-import pytest
-
 import garmin_tls_patch as tls
+
+import pytest
 
 try:
     from requests_oauthlib import OAuth1
