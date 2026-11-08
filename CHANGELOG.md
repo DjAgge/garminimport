@@ -36,6 +36,60 @@ agent); the older entries are the history of the upstream repository
   duplicate-free rows via an importKey
 
 
+## 4.6.2 - 2026-01-13
+
+- fixed: Change URLs for `activity_types.properties` and `event_types.properties`
+  to fix #125 [Activity types page don't exist anymore](https://github.com/pe-st/garmin-connect-export/issues/125) 
+  ([Pull Request #126](https://github.com/pe-st/garmin-connect-export/pull/126) by @SebKuzminsky)
+- changed: replace local `FixedOffset` with Python 3.x standard `datetime.timezone`
+
+
+## 4.6.1 - 2025-07-20
+
+- added: Add Dockerfile and usage examples to README
+  ([Pull Request #121](https://github.com/pe-st/garmin-connect-export/pull/121) by @nareddyt) 
+
+
+## 4.6.0 - 2025-04-21
+
+- changed: return error code in case of exception
+  ([Pull Request #117](https://github.com/pe-st/garmin-connect-export/pull/117) by @tymmej) 
+- changed: retry gpx download
+  ([Pull Request #118](https://github.com/pe-st/garmin-connect-export/pull/118) by @tymmej) 
+
+
+## 4.5.0 - 2024-12-18
+
+- changed: minimum Python version is now 3.10 (as the garth library requires 3.10)
+- changed: add filtering by human-readable activity type
+  ([Pull Request #114](https://github.com/pe-st/garmin-connect-export/pull/114) by @RReverser) 
+- fixed: login with OAuth token works again (#115)
+
+
+## 4.4.0 - 2024-07-12
+
+- changed: allow session directory to work on first go
+  ([Pull Request #108](https://github.com/pe-st/garmin-connect-export/pull/108) by @rjl6789) 
+- fixed: processing of old activities with missing activity name (#113) or elevation correction flag (#112)
+
+
+## 4.3.0 - 2024-03-02
+
+- added: option `-ss` to store OAuth token between sessions
+  ([Pull Request #99](https://github.com/pe-st/garmin-connect-export/pull/99) by @embear) 
+- added: typeId filtering (option `-tf`)
+  ([Pull Request #72](https://github.com/pe-st/garmin-connect-export/pull/72) by @joetimmerman) 
+
+
+## 4.2.0 - 2023-10-08
+
+- fixed: Use [garth](https://github.com/matin/garth) for OAuth to fix #95
+  [Did not find the display name in the profile page](https://github.com/pe-st/garmin-connect-export/issues/95) 
+  ([Pull Request #96](https://github.com/pe-st/garmin-connect-export/pull/96) by @SimonBaars with @geraudloup and @app4g)
+- added: date filter flags `--start_date` and `--end_date`
+  ([Pull Request #73](https://github.com/pe-st/garmin-connect-export/pull/73) by @bxsx)
+
+
 ## 4.1.0 - 2023-07-22
 
 - changed: updated the list of parent activities (`PARENT_TYPE_ID`) to the new set Garmin is now using
@@ -49,16 +103,16 @@ agent); the older entries are the history of the upstream repository
 - removed: Python 2 leftovers
   ([Pull Request #73](https://github.com/pe-st/garmin-connect-export/pull/73) by @bxsx)
 - added: configurations for flake8, pylint and black (including the needed improvements of the code for them)
-- changed: Github Actions now execute also flake8, pylint and black tasks
+- changed: GitHub Actions now execute also flake8, pylint and black tasks
 
 
 ## 3.3.0 - 2021-12-26
 
 - added: support for time spent in HR zones (feature request)
   ([Issue #68](https://github.com/pe-st/garmin-connect-export/issues/68)
-- fixed: adapt display name parsing because of change Garmin Connect behaviour
+- fixed: adapt display name parsing because of changed Garmin Connect behaviour
   ([Pull Request #69](https://github.com/pe-st/garmin-connect-export/pull/69) by @hannesweisbach)
-- added: Github Action to execute the tests automatically
+- added: GitHub Action to execute the tests automatically
 
 
 ## 3.2.1 - 2021-08-15

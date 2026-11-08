@@ -24,9 +24,9 @@ The script should be usable for a wide range of users and Python versions.
 
 For that reason the script should be compatible with the oldest still [supported
 Python version](https://devguide.python.org/versions/). At the time of this writing
-(July 2023) this is Python 3.8, whose end-of-life is currently scheduled for October 2024.
+(January 2026) this is Python 3.10, whose end-of-life is currently scheduled for October 2026.
 
-The Github Actions (see `github/workflows/python-app.yml`) thus run all steps twice,
+The GitHub Actions (see `github/workflows/python-app.yml`) thus run all steps twice,
 once with the oldest supported Python version, and once with the newest released version.
 
 ### Updating the minimum Python version
