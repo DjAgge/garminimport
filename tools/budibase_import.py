@@ -78,8 +78,7 @@ def api(method, path, json_body=None):
     resp = http.request(
         method,
         f'{BUDIBASE_URL}/api/public/v1{path}',
-        headers={'x-budibase-api-key': BUDIBASE_API_KEY,
-                 'x-budibase-app-id': APP_ID},
+        headers={'x-budibase-api-key': BUDIBASE_API_KEY, 'x-budibase-app-id': APP_ID},
         json=json_body,
     )
     if resp.status_code not in (200, 201):
@@ -180,8 +179,7 @@ def _range_files(filename):
     file. Callers merge per calendarDate as they read, so newer copies
     overwrite older entries for the same day.
     """
-    archived = sorted(glob(os.path.join(EXPORT_DIR, 'health', 'archive',
-                                         f'{filename}.*.json')))
+    archived = sorted(glob(os.path.join(EXPORT_DIR, 'health', 'archive', f'{filename}.*.json')))
     current = os.path.join(EXPORT_DIR, 'health', filename)
     for path in archived:
         yield path
@@ -268,8 +266,7 @@ def main():
     if not BUDIBASE_URL or not BUDIBASE_API_KEY:
         sys.exit('BUDIBASE_URL and BUDIBASE_API_KEY must be set')
     if not APP_ID:
-        sys.exit('BUDIBASE_APP_ID must be set (from the builder URL, '
-                 '/builder/workspace/<id>/)')
+        sys.exit('BUDIBASE_APP_ID must be set (from the builder URL, ' '/builder/workspace/<id>/)')
     if not os.path.isdir(os.path.join(EXPORT_DIR, 'health')):
         sys.exit(f'No health data found in {EXPORT_DIR!r} (run gcexport.py --health first)')
 
