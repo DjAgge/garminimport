@@ -1,15 +1,17 @@
-FROM python:3.13-slim@sha256:f2fdaec50160418e0c2867ba3e254755edd067171725886d5d303fd7057bbf81
+FROM python:3.13-slim
 
-RUN useradd --create-home gceuser
-WORKDIR /home/gceuser
-USER gceuser
+WORKDIR /app
 
 # Install deps first to improve caching.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
-ENTRYPOINT ["python3", "gcexport.py"]
+COPY gcexport.py garmin_tls_patch.py filtering.py ./
+COPY csv_header_*.properties ./
+COPY tools/ tools/
 
-# Default command if no arguments are provided to `docker run`
-CMD ["--help"]
+# One-shot container: runs gcexport.py (and optionally the Budibase import
+# via tools/run_daily.sh), so the host/NAS scheduler decides when it runs.
+# Runs as root on purpose: the compose stack writes to the named volume
+# /data, which is root-owned on its first mount.
+ENTRYPOINT ["python3", "gcexport.py"]

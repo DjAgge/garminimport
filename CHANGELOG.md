@@ -2,6 +2,39 @@
 
 This changelog is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+The entries below "Unreleased" (and everything up to 4.1.0) document the changes of this fork
+([DjAgge/garminimport](https://github.com/DjAgge/garminimport), developed with the help of an AI coding
+agent); the older entries are the history of the upstream repository
+[pe-st/garmin-connect-export](https://github.com/pe-st/garmin-connect-export).
+
+
+## Unreleased
+
+- changed: login to Garmin Connect now uses the modern SSO/OAuth flow with
+  browser TLS imitation via [curl_cffi](https://github.com/lexiforest/curl_cffi)
+  (new runtime dependency, `pip install curl_cffi`)
+- added: support for accounts with multi-factor authentication (MFA); the
+  script prompts for the MFA code when Garmin requires one
+- added: new option `--health DAYS` to export the daily health data (steps,
+  stress, intensity minutes, hydration, sleep score, HRV, weight, daily
+  summary, sleep data, body battery) of the last DAYS days as JSON files
+- changed: error messages for failed login or export requests now include
+  Garmin's response body for easier diagnosis
+
+
+## Unreleased
+
+- added: new option `--tokenfile` (default `~/.gcexport_tokens.json`) for
+  caching the OAuth tokens; later runs skip the SSO login and thus the MFA
+  prompt, an expired access token is renewed from the OAuth1 token
+- added: `Dockerfile`, `docker-compose.yml` and `tools/run_daily.sh` for a
+  daily scheduled export on a NAS
+- added: `tools/budibase_import.py` to push the exported health data into
+  a self-hosted Budibase instance: one combined row per calendar day
+  (daily summary, stress, intensity minutes, hydration, sleep score, HRV
+  and at most one weight measurement per day), auto-created table,
+  duplicate-free rows via an importKey
+
 
 ## 4.6.2 - 2026-01-13
 

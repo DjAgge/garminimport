@@ -34,7 +34,7 @@ import sys
 import unicodedata
 import urllib.request
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from getpass import getpass
 from math import floor
 from platform import python_version
@@ -45,11 +45,11 @@ from urllib.parse import urlencode
 from urllib.request import Request
 
 # PyPI imports
-import garth
-from garth.exc import GarthException
 
 # Local application/library specific imports
 from filtering import read_exclude, update_download_stats
+
+import garmin_tls_patch
 
 COOKIE_JAR = http.cookiejar.CookieJar()
 OPENER = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(COOKIE_JAR), urllib.request.HTTPSHandler(debuglevel=0))
@@ -99,20 +99,19 @@ MAX_TRIES = 3
 
 CSV_TEMPLATE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "csv_header_default.properties")
 
-GARMIN_BASE_URL = "https://connect.garmin.com"
-
 # URLs for various services.
-URL_GC_USER = f'{GARMIN_BASE_URL}/userprofile-service/socialProfile'
-URL_GC_USERSTATS = f'{GARMIN_BASE_URL}/userstats-service/statistics/'
-URL_GC_LIST = f'{GARMIN_BASE_URL}/activitylist-service/activities/search/activities?'
-URL_GC_ACTIVITY = f'{GARMIN_BASE_URL}/activity-service/activity/'
-URL_GC_DEVICE = f'{GARMIN_BASE_URL}/device-service/deviceservice/app-info/'
-URL_GC_GEAR = f'{GARMIN_BASE_URL}/gear-service/gear/filterGear?activityId='
-URL_GC_ACT_PROPS = f'{GARMIN_BASE_URL}/web-translations/activity_types/activity_types.properties'
-URL_GC_EVT_PROPS = f'{GARMIN_BASE_URL}/web-translations/event_types/event_types.properties'
-URL_GC_GPX_ACTIVITY = f'{GARMIN_BASE_URL}/download-service/export/gpx/activity/'
-URL_GC_TCX_ACTIVITY = f'{GARMIN_BASE_URL}/download-service/export/tcx/activity/'
-URL_GC_ORIGINAL_ACTIVITY = f'{GARMIN_BASE_URL}/download-service/files/activity/'
+
+URL_GC_PROFILE = 'https://connectapi.garmin.com/userprofile-service/socialProfile'
+URL_GC_USERSTATS = 'https://connectapi.garmin.com/userstats-service/statistics/'
+URL_GC_LIST = 'https://connectapi.garmin.com/activitylist-service/activities/search/activities?'
+URL_GC_ACTIVITY = 'https://connectapi.garmin.com/activity-service/activity/'
+URL_GC_DEVICE = 'https://connectapi.garmin.com/device-service/deviceservice/app-info/'
+URL_GC_GEAR = 'https://connectapi.garmin.com/gear-service/gear/filterGear?activityId='
+URL_GC_ACT_PROPS = 'https://connect.garmin.com/modern/main/js/properties/activity_types/activity_types.properties'
+URL_GC_EVT_PROPS = 'https://connect.garmin.com/modern/main/js/properties/event_types/event_types.properties'
+URL_GC_GPX_ACTIVITY = 'https://connectapi.garmin.com/download-service/export/gpx/activity/'
+URL_GC_TCX_ACTIVITY = 'https://connectapi.garmin.com/download-service/export/tcx/activity/'
+URL_GC_ORIGINAL_ACTIVITY = 'https://connectapi.garmin.com/download-service/files/activity/'
 
 
 class GarminException(Exception):
@@ -193,6 +192,11 @@ def http_req(url, post=None, headers=None):
     :param headers:      dictionary of headers
     :return: response body (type 'bytes')
     """
+    # After a modern (SSO/OAuth) login all requests go through the
+    # curl_cffi session so that the TLS fingerprint looks like a browser.
+    if garmin_tls_patch.CLIENT.session_active():
+        return garmin_tls_patch.CLIENT.http_request(url, post, headers)
+
     request = Request(url)
     # Tell Garmin we're some supported browser.
     request.add_header(
@@ -200,8 +204,6 @@ def http_req(url, post=None, headers=None):
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2816.0 Safari/537.36',
     )
     request.add_header('nk', 'NT')  # necessary since 2021-02-23 to avoid http error code 402
-    request.add_header('authorization', str(garth.client.oauth2_token))
-    request.add_header('di-backend', 'connectapi.garmin.com')
     if headers:
         for header_key, header_value in headers.items():
             request.add_header(header_key, header_value)
@@ -451,14 +453,18 @@ def parse_arguments(argv):
         help='template file with desired columns for CSV output')
     parser.add_argument('-fp', '--fileprefix', action='count', default=0,
         help='set the local time as activity file name prefix')
+    parser.add_argument('--tokenfile', default='~/.gcexport_tokens.json',
+        help='JSON file for caching the OAuth tokens, so that later runs skip the login (and'
+            ' the MFA prompt). Set to an empty string to disable the token file')
+    parser.add_argument('--health', type=int, default=0,
+        help='export the daily health data (steps, stress, sleep, HRV, weight, ...) of the'
+            ' last HEALTH days as JSON files into the subdirectory \"health\" of the output directory')
     parser.add_argument('-sa', '--start_activity_no', type=int, default=1,
         help='give index for first activity to import, i.e. skipping the newest activities')
     parser.add_argument('-ex', '--exclude', metavar='FILE',
         help='JSON file with array of activity IDs to exclude from download. Format example: {"ids": ["6176888711"]}')
     parser.add_argument('-tf', '--type_filter',
         help='comma-separated list of activity type IDs to allow. Format example: 3,9')
-    parser.add_argument('-ss', '--session', metavar='DIRECTORY',
-        help='enable loading and storing SSO information from/to given directory')
     # fmt: on
 
     return parser.parse_args(argv[1:])
@@ -466,50 +472,22 @@ def parse_arguments(argv):
 
 def login_to_garmin_connect(args):
     """
-    Perform all HTTP requests to login to Garmin Connect.
+    Perform the modern SSO/OAuth login to Garmin Connect.
+
+    Uses garmin_tls_patch (curl_cffi TLS imitation + OAuth1/OAuth2); prompts
+    for an MFA code if the account requires one.
     """
-    garth_session_directory = args.session if args.session else None
+    token_file = args.tokenfile or None
+    if garmin_tls_patch.CLIENT.restore(token_file):
+        print('Session restored from token file ', token_file, sep='')
+        return
 
-    print('Authenticating...', end='')
-    try:
-        login_required = False
+    username = args.username if args.username else input('Username: ')
+    password = args.password if args.password else getpass()
 
-        # try to load data if a session directory is given
-        if garth_session_directory:
-            try:
-                garth.resume(garth_session_directory)
-            except GarthException as ex:
-                logging.debug("Could not resume session, error: %s", ex)
-                login_required = True
-            except FileNotFoundError as ex:
-                logging.debug("Could not resume session, (non-garth) error: %s", ex)
-                login_required = True
-            try:
-                garth.client.username
-            except GarthException as ex:
-                logging.debug("Session expired, error: %s", ex)
-                login_required = True
-            except AssertionError as ex:
-                logging.debug("Token not found, (non-garth) error: %s", ex)
-                login_required = True
-            logging.info("Authenticating using OAuth token from %s", garth_session_directory)
-        else:
-            login_required = True
-
-        if login_required:
-            username = args.username if args.username else input('Username: ')
-            password = args.password if args.password else getpass()
-            garth.login(username, password)
-
-            # try to store data if a session directory was given
-            if garth_session_directory:
-                try:
-                    garth.save(garth_session_directory)
-                except GarthException as ex:
-                    logging.warning("Unable to store session data to %s, error: %s", garth_session_directory, ex)
-
-    except Exception as ex:
-        raise GarminException(f'Authentication failure ({ex}). Did you enter correct credentials?') from ex
+    print('Connecting to Garmin Connect...', end='')
+    logging.info('Connecting to Garmin SSO')
+    garmin_tls_patch.CLIENT.login(username, password, token_file=token_file)
     print(' Done.')
 
 
@@ -541,7 +519,7 @@ def csv_write_record(csv_filter, extract, actvty, details, activity_type_name, e
 
     # fmt: off
     csv_filter.set_column('id', str(actvty['activityId']))
-    csv_filter.set_column('url', f'{GARMIN_BASE_URL}/modern/activity/' + str(actvty['activityId']))
+    csv_filter.set_column('url', 'https://connect.garmin.com/modern/activity/' + str(actvty['activityId']))
     csv_filter.set_column('activityName', actvty['activityName'] if present('activityName', actvty) else None)
     csv_filter.set_column('description', actvty['description'] if present('description', actvty) else None)
     csv_filter.set_column('startTimeIso', extract['start_time_with_offset'].isoformat())
@@ -910,12 +888,8 @@ def fetch_userstats(args):
     :return:        json with user statistics
     """
     print('Getting display name...', end='')
-    logging.info('Profile page %s', URL_GC_USER)
-    profile_page = http_req_as_string(URL_GC_USER)
-    if args.verbosity > 0:
-        write_to_file(os.path.join(args.directory, 'user.json'), profile_page, 'w')
-
-    display_name = json.loads(profile_page)['displayName']
+    logging.info('Social profile %s', URL_GC_PROFILE)
+    display_name = get_display_name(args)
     print(' Done. displayName=', display_name, sep='')
 
     print('Fetching user stats...', end='')
@@ -927,6 +901,158 @@ def fetch_userstats(args):
     write_to_file(os.path.join(args.directory, 'userstats.json'), result, 'w')
 
     return json.loads(result)
+
+
+def get_display_name(args):
+    """
+    Fetch the display name from the social profile.
+
+    :param args:    command-line arguments (for args.directory etc)
+    :return:        the display name
+    """
+    profile_json = json.loads(http_req_as_string(URL_GC_PROFILE))
+    if args.verbosity > 0:
+        write_to_file(os.path.join(args.directory, 'profile.json'), json.dumps(profile_json), 'w')
+
+    display_name = profile_json.get('displayName') or profile_json.get('userName')
+    if not display_name:
+        raise GarminException('Did not find the display name in the social profile.')
+    return display_name
+
+
+def fetch_health_data(args, display_name, days):
+    """
+    Fetch daily health data (steps, stress, sleep, HRV, weight, ...) for the
+    last *days* days and save each data set as a JSON file in the subdirectory
+    'health' of the output directory. Failing services are skipped with a
+    warning so that the rest of the export still runs.
+
+    :param args:           command-line arguments (for args.directory etc)
+    :param display_name:   Garmin display name, needed for the daily summary
+    :param days:           number of days to fetch (including today)
+    """
+    end = date.today()
+    start = end - timedelta(days=days - 1)
+    health_dir = os.path.join(args.directory, 'health')
+    os.makedirs(health_dir, exist_ok=True)
+
+    range_urls = {
+        'steps': 'https://connectapi.garmin.com/usersummary-service/stats/steps/daily/{start}/{end}',
+        'stress': 'https://connectapi.garmin.com/usersummary-service/stats/stress/daily/{start}/{end}',
+        'intensity_minutes': 'https://connectapi.garmin.com/usersummary-service/stats/im/daily/{start}/{end}',
+        'hydration': 'https://connectapi.garmin.com/usersummary-service/stats/hydration/daily/{start}/{end}',
+        'sleep_score': 'https://connectapi.garmin.com/wellness-service/stats/daily/sleep/score/{start}/{end}',
+        'hrv': 'https://connectapi.garmin.com/hrv-service/hrv/daily/{start}/{end}',
+        'weight': 'https://connectapi.garmin.com/weight-service/weight/range/{start}/{end}?includeAll=true',
+    }
+    for name, url_template in range_urls.items():
+        merged = None
+        for chunk_start, chunk_end in date_range_chunks(start, end):
+            url = url_template.format(start=chunk_start, end=chunk_end)
+            merged = merge_health_json(merged, fetch_health_json(url))
+        if merged is not None:
+            write_to_file(
+                os.path.join(health_dir, name + '.json'),
+                json.dumps(merged, indent=2, sort_keys=True),
+                'w',
+            )
+
+    daily_dir = os.path.join(health_dir, 'daily')
+    os.makedirs(daily_dir, exist_ok=True)
+    for day_offset in range(days):
+        day = start + timedelta(days=day_offset)
+        daily_urls = {
+            'daily_summary': (
+                f'https://connectapi.garmin.com/usersummary-service/usersummary/daily/{display_name}' f'?calendarDate={day}'
+            ),
+            'sleep': f'https://connectapi.garmin.com/sleep-service/sleep/dailySleepData?date={day}',
+            'body_battery': f'https://connectapi.garmin.com/wellness-service/wellness/bodyBattery/events/{day}',
+        }
+        for name, url in daily_urls.items():
+            day_json = fetch_health_json(url)
+            if day_json is not None:
+                write_to_file(
+                    os.path.join(daily_dir, f'{day}_{name}.json'),
+                    json.dumps(day_json, indent=2, sort_keys=True),
+                    'w',
+                )
+
+
+def date_range_chunks(start, end):
+    """
+    Split the inclusive date range [start, end] into chunks of at most 28
+    days (Garmin's limit for the daily stats range endpoints).
+
+    :param start:   first day of the range
+    :param end:     last day of the range
+    :return:        list of (chunk_start, chunk_end) tuples
+    """
+    chunks = []
+    chunk_end = end
+    while chunk_end >= start:
+        chunk_start = max(start, chunk_end - timedelta(days=27))
+        chunks.append((chunk_start, chunk_end))
+        chunk_end = chunk_start - timedelta(days=1)
+    chunks.reverse()
+    return chunks
+
+
+def merge_health_json(merged, new):
+    """
+    Merge the JSON responses of consecutive range chunks: lists are
+    concatenated, dicts are merged key by key (concatenating list values).
+
+    :param merged:  merged response so far (None initially)
+    :param new:     response of the next chunk (None if the chunk failed)
+    :return:        the merged response
+    """
+    if new is None:
+        return merged
+    if merged is None:
+        return new
+    if isinstance(new, list):
+        return merged + new
+    if isinstance(new, dict):
+        for key, value in new.items():
+            if isinstance(value, list) and isinstance(merged.get(key), list):
+                merged[key] = merged[key] + value
+            else:
+                merged[key] = value
+        return merged
+    return new
+
+
+def fetch_health_json(url):
+    """
+    Fetch one health data URL and return the parsed JSON response; failures
+    are logged and result in None.
+
+    :param url:  URL to fetch
+    :return:     parsed JSON response, or None on failure
+    """
+    logging.info('Health data %s', url)
+    try:
+        result = http_req_as_string(url)
+        return json.loads(result) if result else None
+    except (GarminException, garmin_tls_patch.GarminTlsException) as ex:
+        logging.warning('Skipping health data %s: %s', url, ex)
+        return None
+
+
+def extract_display_name(profile_page):
+    """
+    Extract the display name from the profile page HTML document
+    :param profile_page: HTML document
+    :return:             the display name
+    """
+    # the display name should be in the HTML document as
+    # "displayName":"John.Doe"
+    pattern = re.compile(r".*\"displayName\":\"(.+?)\".*", re.MULTILINE | re.DOTALL)
+    match = pattern.match(profile_page)
+    if not match:
+        raise GarminException('Did not find the display name in the profile page.')
+    display_name = match.group(1)
+    return display_name
 
 
 def fetch_activity_list(args, total_to_download):
@@ -1282,6 +1408,11 @@ def main(argv):
     # Query the userstats (activities totals on the profile page). Needed for
     # filtering and for downloading 'all' to know how many activities are available
     userstats_json = fetch_userstats(args)
+
+    if args.health > 0:
+        print(f'Fetching health data for the last {args.health} day(s)...', end='')
+        fetch_health_data(args, get_display_name(args), args.health)
+        print(' Done.')
 
     if args.count == 'all':
         total_to_download = int(userstats_json['userMetrics'][0]['totalActivities'])

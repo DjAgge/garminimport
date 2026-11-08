@@ -1,0 +1,60 @@
+# Daily Garmin Connect export for the NAS, managed e.g. with Portainer.
+#
+# Deploy in Portainer: Stacks -> Add stack -> Repository, point it at this
+# repository and the compose file docker-compose.yml, then set the environment
+# variables below in the stack's "Environment variables" section.
+#
+# The stack runs one long-lived container (garmin-scheduler) that triggers the
+# export once a day at RUN_TIME and then imports the health data into
+# Budibase. Manual runs (initial history, fresh login) are done from the
+# container console, see README.md.
+
+services:
+  garmin-scheduler:
+    build: .
+    # the Dockerfile ENTRYPOINT runs gcexport.py directly; override it with
+    # the scheduler loop so the container waits for RUN_TIME instead of
+    # starting an export (and crashing on the interactive login prompt) on
+    # every (re)start. Docker APPENDS command to the ENTRYPOINT, so the
+    # ENTRYPOINT itself must be replaced here.
+    # Manual runs (initial history, fresh login) are done from the container
+    # console, see README.md.
+    entrypoint: ["sh", "tools/run_loop.sh"]
+    restart: unless-stopped
+    environment:
+      # when to run the daily export (container time; set TZ accordingly)
+      RUN_TIME: "06:00"
+      TZ: "Europe/Berlin"
+      # how many days of health data to fetch (2 for daily operation;
+      # raise e.g. to 60 once for the initial history)
+      HEALTH_DAYS: "2"
+      # Budibase (self-hosted) - only needed for the import step;
+      # leave BUDIBASE_API_KEY empty to disable the Budibase import
+      # BUDIBASE_URL must be reachable from this container; when the stack is
+      # attached to the Budibase stack's network (see networks below), the
+      # URL is http://<budibase-service-name>:<container-port>
+      # values are injected from the stack's environment variables in
+      # Portainer (set BUDIBASE_URL and BUDIBASE_API_KEY there); leaving them
+      # unset in Portainer disables the Budibase import
+      BUDIBASE_URL: "${BUDIBASE_URL:-}"
+      BUDIBASE_API_KEY: "${BUDIBASE_API_KEY:-}"
+      BUDIBASE_APP_ID: "${BUDIBASE_APP_ID:-}"
+      BUDIBASE_TABLE: "${BUDIBASE_TABLE:-Health Daily}"
+    volumes:
+      # persistent storage for the OAuth tokens and the exports
+      - garmin-data:/data
+    networks:
+      - budibase
+
+volumes:
+  garmin-data:
+
+networks:
+  # attach the scheduler to the network of the Budibase stack so the import
+  # can reach Budibase directly; set BUDIBASE_URL accordingly, e.g.
+  # http://budibase:80 (service name and container port of the Budibase stack).
+  # Remove this section (and the networks key of the service) if your
+  # Budibase runs elsewhere; then point BUDIBASE_URL at that host instead.
+  budibase:
+    name: budibase_default
+    external: true

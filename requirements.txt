@@ -1,1 +1,1 @@
-garth>=0.7.0,<0.8.0
+curl_cffi
