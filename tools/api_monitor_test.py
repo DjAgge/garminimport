@@ -336,3 +336,20 @@ def test_run_monitor_auth_properties_html_fails():
 def test_sample_keys_missing_file_returns_empty_set():
     assert api_monitor.sample_keys('does-not-exist.json') == set()
     assert api_monitor.sample_property_keys('does-not-exist.properties') == set()
+
+
+def test_run_probe_activity_list_needs_only_core_keys():
+    probe = next(p for p in api_monitor.auth_probes('2026-11-10') if p['name'] == 'activity-list')
+    element = {key: 1 for key in probe['required']}
+    result = api_monitor.run_probe(
+        probe, fake_fetch({'activitylist-service': (200, json.dumps([element]).encode())}), {}, '2026-11-10'
+    )
+    assert result['ok']
+
+
+def test_run_probe_weight_range_accepts_dict_but_not_html():
+    probe = next(p for p in api_monitor.auth_probes('2026-11-10') if p['name'] == 'weight-range')
+    ok = api_monitor.run_probe(probe, fake_fetch({'weight/range': (200, b'{"message": "no data"}')}), {}, '2026-11-10')
+    assert ok['ok']
+    bad = api_monitor.run_probe(probe, fake_fetch({'weight/range': (200, b'<html>oops</html>')}), {}, '2026-11-10')
+    assert not bad['ok']
