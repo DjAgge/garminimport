@@ -29,6 +29,13 @@ and a Docker stack for scheduled runs:
   built-in daily scheduler for NAS/Portainer operation
 - **Budibase import** (`tools/budibase_import.py`): pushes the exported health data into the internal
   database of a self-hosted [Budibase](https://budibase.com) instance — one combined row per day
+- **API monitoring** (`tools/api_monitor.py`): probes the Garmin endpoints used by the export and
+  checks the response structure against the samples in `json/`; it also watches Garmin's developer
+  documentation/news pages (developer.garmin.com, incl. the Connect Developer Program and the Personal
+  API Swagger docs) against the baseline in `tools/docs_baseline.json`, so announced API changes are
+  noticed in advance; on a detected change it notifies via
+  a deduplicated GitHub issue or a webhook (see
+  [Monitoring Garmin API changes](#monitoring-garmin-api-changes))
 - Error messages now include Garmin's response body (status code and text) for much easier diagnosis
 
 See [CHANGELOG.md](./CHANGELOG.md) for the detailed list of changes.
@@ -224,6 +231,11 @@ as JSON files into the subdirectory `health` of the output directory:
 - `daily/<date>_daily_summary.json`, `daily/<date>_sleep.json`,
   `daily/<date>_body_battery.json` — one file per day
 
+The daily summaries are fetched from Garmin's `usersummary-service/v2/dailysummaries`
+range endpoint (since 2026-10-28 the old per-day v1 endpoint no longer returns the
+flat fields); `tools/budibase_import.py` flattens the topic-grouped v2 values back
+into flat columns, mapping the well-known fields to the previous v1 column names.
+
 Services that are unavailable or not used (e.g., no smart scale) are skipped
 with a warning. `--health 0` (the default) disables the health export.
 
@@ -288,6 +300,35 @@ Configuration is done via environment variables (`BUDIBASE_URL`,
 import runs automatically after the export; leave `BUDIBASE_API_KEY` empty to
 disable it.
 
+### Monitoring Garmin API changes
+
+`tools/api_monitor.py` watches the Garmin Connect API for changes, so the next API change is noticed
+early instead of only surfacing as a failing export run. It probes the endpoints the export depends on
+and checks the JSON response structure against the sample responses in `json/`:
+
+- **daily on the NAS**: `tools/run_daily.sh` runs the monitor with the cached `--tokenfile` tokens
+  before every export (all connectapi endpoints: profile, activity list, userstats, daily summaries,
+  sleep, body battery, HRV, weight)
+- **weekly in CI**: `.github/workflows/api-monitor.yml` probes the public endpoints (SSO sign-in
+  page, activity/event type property files, unauthenticated connectapi behaviour) and the
+  documentation/news pages (`--probe-set public,docs`)
+- **documentation/news monitoring** (`--probe-set docs`): the Garmin developer portal and the
+  Garmin Connect Developer Program pages (overview, Activity API, Health API, Personal API incl.
+  Swagger/OpenAPI docs, Health SDKs) are hashed and compared against `tools/docs_baseline.json`;
+  after reviewing a reported change, record the new state with
+  `python3 tools/api_monitor.py --probe-set docs --update-docs-baseline` and commit the updated
+  baseline
+
+A non-JSON (e.g. HTML) answer, a wrong status code, a failed login or missing response keys count as
+a change: the monitor exits with code 1 and notifies via a deduplicated GitHub issue (set
+`GITHUB_TOKEN` — a fine-grained PAT with `issues:write` — and optionally `GITHUB_REPOSITORY` in the
+stack's environment variables in Portainer; in GitHub Actions the automatic `GITHUB_TOKEN` is used)
+and/or a webhook (`MONITOR_WEBHOOK_URL` receives the JSON report). Run it manually with:
+
+```bash
+python3 tools/api_monitor.py --tokenfile ~/.gcexport_tokens.json --dry-run
+```
+
 ### Notes on the Usage
 
 - The `-c COUNT` option might appear to count wrongly when exporting multi-sport activities;
@@ -341,7 +382,8 @@ Some important columns explained:
 This script is for personal use only. It simulates a standard user session (i.e., in the browser):
 the login goes through Garmin's SSO (with browser TLS imitation), the API requests carry an OAuth2
 bearer token obtained via Garmin's OAuth endpoints. This makes the script pretty brittle — when
-Garmin changes its login or endpoints, the script needs to be adapted. If you're looking for a more
+Garmin changes its login or endpoints, the script needs to be adapted (the
+[API monitor](#monitoring-garmin-api-changes) is there to tell you when that happens). If you're looking for a more
 reliable option, particularly if you wish to use this for some production service, Garmin does offer
 a paid API service.
 

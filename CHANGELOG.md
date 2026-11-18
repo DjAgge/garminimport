@@ -20,6 +20,27 @@ agent); the older entries are the history of the upstream repository
   summary, sleep data, body battery) of the last DAYS days as JSON files
 - changed: error messages for failed login or export requests now include
   Garmin's response body for easier diagnosis
+- fixed: fetch the daily summary from Garmin's `usersummary-service/v2/dailysummaries`
+  range endpoint — since 2026-10-28 the old per-day v1 endpoint no longer returns the
+  flat fields, which left the daily rows in the Budibase import empty;
+  `tools/budibase_import.py` now flattens the topic-grouped v2 values and maps the
+  well-known fields back to the flat v1 column names
+- added: `tools/api_monitor.py` to detect Garmin API changes early: it probes the public
+  SSO/property endpoints and — with the cached `--tokenfile` tokens — the connectapi
+  endpoints used by the export, checks the JSON response structure against the samples
+  in `json/`, and on a detected change (wrong status, HTML instead of JSON, missing
+  keys, failed login) exits non-zero and opens a deduplicated GitHub issue
+  (`GITHUB_TOKEN`/`GITHUB_REPOSITORY`) or posts the JSON report to
+  `MONITOR_WEBHOOK_URL`; it runs before every export on the NAS (`tools/run_daily.sh`)
+  and weekly in CI for the public endpoints (`.github/workflows/api-monitor.yml`)
+- added: documentation/news monitoring to `tools/api_monitor.py` (`--probe-set docs`): the Garmin
+  developer portal and the Garmin Connect Developer Program pages (overview, Activity API, Health
+  API, Personal API incl. Swagger/OpenAPI docs, Health SDKs) are hashed and compared against the
+  checked-in baseline `tools/docs_baseline.json`, so announced API/documentation changes are
+  detected before they break the export; after reviewing a change, run
+  `python3 tools/api_monitor.py --probe-set docs --update-docs-baseline` and commit the new baseline;
+  the weekly CI workflow now runs `--probe-set public,docs` and the daily NAS run (`all`) includes
+  the docs probes too
 
 
 ## Unreleased

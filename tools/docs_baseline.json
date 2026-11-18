@@ -1,0 +1,42 @@
+{
+  "developer-portal": {
+    "sha256": "8289451b7be347404c5bdf15498a8d477b6d58b157aeb8b1d24a7162c1067959",
+    "title": "Home | Garmin Developers",
+    "url": "https://developer.garmin.com/"
+  },
+  "gc-activity-api": {
+    "sha256": "cdd13aeba00da1f6e73ab038ba8879ddaa1bda0dcb268af4995b04e72781cc90",
+    "title": "Activity API | Garmin Connect Developer Program | Garmin Developers",
+    "url": "https://developer.garmin.com/gc-developer-program/enterprise/activity-api"
+  },
+  "gc-health-api": {
+    "sha256": "c4ee6ea3125db4969953b8c7ca81dd1a0318647c1eb0b5e3fc68592db2da1e4b",
+    "title": "Health API | Garmin Connect Developer Program | Garmin Developers",
+    "url": "https://developer.garmin.com/gc-developer-program/enterprise/health-api"
+  },
+  "gc-personal-api": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "title": "",
+    "url": "https://developer.garmin.com/gc-developer-program/personal/"
+  },
+  "gc-personal-faq": {
+    "sha256": "5b15211ac9d08af9d8e1ef0a105231c02f8303a097a4b3ca6364d5b5f34ea905",
+    "title": "Program FAQ | Garmin Connect Developer Program | Garmin Developers",
+    "url": "https://developer.garmin.com/gc-developer-program/personal/personal-faq/"
+  },
+  "gc-personal-swagger": {
+    "sha256": "ecafaa46faeb6599adc92f30ae1e04b296de73eaca8aa8d609b5b07e0a1ad086",
+    "title": "Program FAQ | Garmin Connect Developer Program | Garmin Developers",
+    "url": "https://developer.garmin.com/gc-developer-program/personal/swagger-docs/"
+  },
+  "gc-program-overview": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "title": "",
+    "url": "https://developer.garmin.com/gc-developer-program/"
+  },
+  "health-sdk": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "title": "",
+    "url": "https://developer.garmin.com/health-sdk/"
+  }
+}

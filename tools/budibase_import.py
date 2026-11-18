@@ -156,6 +156,61 @@ def add_prefixed_scalars(target, prefix, data):
             add_prefixed_scalars(target, prefix, value)
 
 
+# Since 2026-10-28 Garmin serves the daily summary only through the v2 range
+# endpoint (usersummary-service/v2/dailysummaries), which groups the values by
+# topic, e.g. movement.steps.value or heartRate.restingValue. Map the
+# well-known ones back to the flat v1 field names so the existing table columns
+# keep being filled; everything else is flattened as <topic>_<field>.
+V2_SUMMARY_FIELD_MAP = {
+    ('movement', 'steps'): 'steps',
+    ('movement', 'steps', 'value'): 'steps',
+    ('movement', 'distance'): 'distanceInMeters',
+    ('movement', 'distance', 'value'): 'distanceInMeters',
+    ('movement', 'floorsClimbed'): 'floorsClimbed',
+    ('movement', 'floorsClimbed', 'value'): 'floorsClimbed',
+    ('movement', 'activeSeconds'): 'activeSeconds',
+    ('movement', 'activeSeconds', 'value'): 'activeSeconds',
+    ('movement', 'highlyActiveSeconds'): 'highlyActiveSeconds',
+    ('movement', 'highlyActiveSeconds', 'value'): 'highlyActiveSeconds',
+    ('calories', 'active'): 'activeKilocalories',
+    ('calories', 'active', 'value'): 'activeKilocalories',
+    ('calories', 'activeKilocalories'): 'activeKilocalories',
+    ('calories', 'activeKilocalories', 'value'): 'activeKilocalories',
+    ('calories', 'bmr'): 'bmrKilocalories',
+    ('calories', 'bmr', 'value'): 'bmrKilocalories',
+    ('calories', 'total'): 'totalKilocalories',
+    ('calories', 'total', 'value'): 'totalKilocalories',
+    ('calories', 'consumed'): 'consumedCalories',
+    ('calories', 'consumed', 'value'): 'consumedCalories',
+    ('heartRate', 'restingValue'): 'restingHeartRateInBeatsPerMinute',
+    ('heartRate', 'minValue'): 'minHeartRateInBeatsPerMinute',
+    ('heartRate', 'maxValue'): 'maxHeartRateInBeatsPerMinute',
+    ('heartRate', 'averageValue'): 'averageHeartRateInBeatsPerMinute',
+    ('stress', 'avgLevel'): 'averageStressLevel',
+    ('stress', 'maxLevel'): 'maxStressLevel',
+    ('pulseOx', 'averageSpO2'): 'averageSpo2',
+    ('intensityMinutes', 'moderate'): 'moderateIntensityMinutes',
+    ('intensityMinutes', 'vigorous'): 'vigorousIntensityMinutes',
+    ('hydration', 'valueInML'): 'hydrationValueInML',
+}
+
+
+def flatten_daily_summary(summary, path=()):
+    """
+    Flatten one daily summary into scalar fields: flat v1 summaries pass
+    through unchanged, topic-grouped v2 summaries become <topic>_<field>
+    (with the well-known fields mapped back to their flat v1 names).
+    """
+    flat = {}
+    for key, value in summary.items():
+        if isinstance(value, dict):
+            flat.update(flatten_daily_summary(value, path + (key,)))
+        elif isinstance(value, SCALAR_TYPES):
+            full_path = path + (key,)
+            flat[V2_SUMMARY_FIELD_MAP.get(full_path, '_'.join(full_path))] = value
+    return flat
+
+
 def load_daily_summaries():
     """
     Read the per-day daily summary JSONs; returns {calendarDate: flat scalars}.
@@ -167,8 +222,7 @@ def load_daily_summaries():
         day = summary.get('calendarDate')
         if not day:
             continue
-        flat = {key: value for key, value in summary.items() if isinstance(value, SCALAR_TYPES)}
-        summaries[day] = flat
+        summaries[day] = flatten_daily_summary(summary)
     return summaries
 
 

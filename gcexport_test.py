@@ -5,6 +5,7 @@ Tests for gcexport.py; Call them with this command line:
 py.test gcexport_test.py
 """
 
+import gcexport
 from gcexport import *
 from io import StringIO
 
@@ -245,3 +246,74 @@ def test_fetch_multisports():
     assert activity_summaries[4]['activityId'] == 6588349076
     assert activity_summaries[5]['activityId'] == 6588349079
     assert activity_summaries[6]['activityId'] == 6588349081
+
+
+class _FixedDate(date):
+    @classmethod
+    def today(cls):
+        return cls(2026, 11, 10)
+
+
+def _patch_health_fetch(monkeypatch, day_summaries_by_start):
+    requested = []
+
+    def fake_fetch_health_json(url):
+        requested.append(url)
+        if 'v2/dailysummaries' in url:
+            start = url.split('startDate=')[1].split('&')[0]
+            return {'data': day_summaries_by_start.get(start, [])}
+        if '/stats/' in url or '/range/' in url:
+            return []
+        return {}
+
+    monkeypatch.setattr(gcexport, 'date', _FixedDate)
+    monkeypatch.setattr(gcexport, 'fetch_health_json', fake_fetch_health_json)
+    return requested
+
+
+def test_fetch_health_data_daily_summaries_v2(tmp_path, monkeypatch):
+    requested = _patch_health_fetch(
+        monkeypatch,
+        {
+            '2026-11-09': [
+                {'calendarDate': '2026-11-09', 'movement': {'steps': {'value': 100}}},
+                {'calendarDate': '2026-11-10', 'movement': {'steps': {'value': 200}}},
+            ]
+        },
+    )
+    args = parse_arguments(['gcexport.py', '-d', str(tmp_path)])
+    gcexport.fetch_health_data(args, 2)
+
+    assert (
+        'https://connectapi.garmin.com/usersummary-service/v2/dailysummaries?startDate=2026-11-09&endDate=2026-11-10' in requested
+    )
+    assert not any('usersummary/daily/' in url for url in requested)
+
+    daily_dir = tmp_path / 'health' / 'daily'
+    with open(daily_dir / '2026-11-09_daily_summary.json') as f:
+        assert json.load(f)['movement']['steps']['value'] == 100
+    with open(daily_dir / '2026-11-10_daily_summary.json') as f:
+        assert json.load(f)['calendarDate'] == '2026-11-10'
+    assert (daily_dir / '2026-11-10_sleep.json').exists()
+    assert (daily_dir / '2026-11-10_body_battery.json').exists()
+    assert (tmp_path / 'health' / 'stress.json').exists()
+
+
+def test_fetch_health_data_daily_summaries_chunked(tmp_path, monkeypatch):
+    requested = _patch_health_fetch(
+        monkeypatch,
+        {
+            '2026-10-12': [{'calendarDate': '2026-10-12', 'movement': {'steps': {'value': 1}}}],
+            '2026-10-14': [{'calendarDate': '2026-10-14', 'movement': {'steps': {'value': 2}}}],
+        },
+    )
+    args = parse_arguments(['gcexport.py', '-d', str(tmp_path)])
+    gcexport.fetch_health_data(args, 30)
+
+    v2_urls = [url for url in requested if 'v2/dailysummaries' in url]
+    assert len(v2_urls) == 2
+    daily_dir = tmp_path / 'health' / 'daily'
+    assert sorted(p.name for p in daily_dir.glob('*_daily_summary.json')) == [
+        '2026-10-12_daily_summary.json',
+        '2026-10-14_daily_summary.json',
+    ]

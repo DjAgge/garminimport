@@ -920,7 +920,7 @@ def get_display_name(args):
     return display_name
 
 
-def fetch_health_data(args, display_name, days):
+def fetch_health_data(args, days):
     """
     Fetch daily health data (steps, stress, sleep, HRV, weight, ...) for the
     last *days* days and save each data set as a JSON file in the subdirectory
@@ -928,7 +928,6 @@ def fetch_health_data(args, display_name, days):
     warning so that the rest of the export still runs.
 
     :param args:           command-line arguments (for args.directory etc)
-    :param display_name:   Garmin display name, needed for the daily summary
     :param days:           number of days to fetch (including today)
     """
     end = date.today()
@@ -959,12 +958,34 @@ def fetch_health_data(args, display_name, days):
 
     daily_dir = os.path.join(health_dir, 'daily')
     os.makedirs(daily_dir, exist_ok=True)
+
+    # Since 2026-10-28 Garmin serves the daily summary only through the v2
+    # range endpoint, which answers {"data": [one object per day, with the
+    # values grouped by topic]}; the old per-day v1 endpoint no longer returns
+    # the flat fields. Fetch the range in chunks and store one file per
+    # calendar day, so the file layout stays the same as before.
+    merged = None
+    for chunk_start, chunk_end in date_range_chunks(start, end):
+        url = 'https://connectapi.garmin.com/usersummary-service/v2/dailysummaries' f'?startDate={chunk_start}&endDate={chunk_end}'
+        merged = merge_health_json(merged, fetch_health_json(url))
+    if isinstance(merged, dict):
+        day_summaries = merged.get('data') or []
+    elif isinstance(merged, list):
+        day_summaries = merged
+    else:
+        day_summaries = []
+    for day_summary in day_summaries:
+        day = day_summary.get('calendarDate')
+        if day:
+            write_to_file(
+                os.path.join(daily_dir, f'{day}_daily_summary.json'),
+                json.dumps(day_summary, indent=2, sort_keys=True),
+                'w',
+            )
+
     for day_offset in range(days):
         day = start + timedelta(days=day_offset)
         daily_urls = {
-            'daily_summary': (
-                f'https://connectapi.garmin.com/usersummary-service/usersummary/daily/{display_name}' f'?calendarDate={day}'
-            ),
             'sleep': f'https://connectapi.garmin.com/sleep-service/sleep/dailySleepData?date={day}',
             'body_battery': f'https://connectapi.garmin.com/wellness-service/wellness/bodyBattery/events/{day}',
         }
@@ -1411,7 +1432,7 @@ def main(argv):
 
     if args.health > 0:
         print(f'Fetching health data for the last {args.health} day(s)...', end='')
-        fetch_health_data(args, get_display_name(args), args.health)
+        fetch_health_data(args, args.health)
         print(' Done.')
 
     if args.count == 'all':
