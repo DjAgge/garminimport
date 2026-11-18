@@ -224,6 +224,11 @@ as JSON files into the subdirectory `health` of the output directory:
 - `daily/<date>_daily_summary.json`, `daily/<date>_sleep.json`,
   `daily/<date>_body_battery.json` — one file per day
 
+The daily summaries are fetched from Garmin's `usersummary-service/v2/dailysummaries`
+range endpoint (since 2026-10-28 the old per-day v1 endpoint no longer returns the
+flat fields); `tools/budibase_import.py` flattens the topic-grouped v2 values back
+into flat columns, mapping the well-known fields to the previous v1 column names.
+
 Services that are unavailable or not used (e.g., no smart scale) are skipped
 with a warning. `--health 0` (the default) disables the health export.
 
