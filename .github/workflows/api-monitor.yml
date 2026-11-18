@@ -1,0 +1,44 @@
+# Weekly probe of Garmin's public endpoints (SSO sign-in page, activity/event
+# type property files, unauthenticated connectapi behaviour) via
+# tools/api_monitor.py. The full authenticated monitoring of the connectapi
+# endpoints runs daily on the NAS: tools/run_daily.sh calls
+# tools/api_monitor.py with the cached OAuth tokens before every export.
+#
+# When a probe fails, the workflow run fails (red X on the Actions tab) and
+# tools/api_monitor.py opens a deduplicated issue in this repository using the
+# automatic GITHUB_TOKEN (needs the "issues: write" permission below).
+name: Garmin API monitor
+
+on:
+  schedule:
+    - cron: '17 5 * * 1' # Mondays 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Probe the public Garmin endpoints
+        run: python3 tools/api_monitor.py --probe-set public --report monitor-report.json
+      - name: Upload the monitor report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: garmin-api-monitor-report
+          path: monitor-report.json

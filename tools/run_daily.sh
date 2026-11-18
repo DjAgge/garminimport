@@ -27,6 +27,15 @@ if [ -d "$EXPORT_DIR/health" ]; then
     done
 fi
 
+# Probe the Garmin API first: when Garmin changes an endpoint or the response
+# structure, the monitor reports it loudly and notifies (GitHub issue when
+# GITHUB_TOKEN is set in the container environment, webhook when
+# MONITOR_WEBHOOK_URL is set). A monitor failure must not block the export.
+python3 tools/api_monitor.py \
+    --tokenfile /data/tokens.json \
+    --repo "${GITHUB_REPOSITORY:-DjAgge/garminimport}" \
+    || echo "api_monitor reported a problem (see above); continuing with the export"
+
 python3 gcexport.py \
     -c 1 -f gpx \
     --health "$HEALTH_DAYS" \
