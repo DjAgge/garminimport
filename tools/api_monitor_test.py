@@ -184,3 +184,103 @@ def test_render_issue_body_mentions_probe():
 def test_github_notify_dry_run_does_not_call_api():
     _, report = api_monitor.run_monitor('auth', auth_fetch=None, login_error='boom', today='2026-11-10')
     api_monitor.github_notify('DjAgge/garminimport', 'fake-token', report, dry_run=True)
+
+
+def doc_probe():
+    return {'name': 'gc-health-api', 'url': 'https://developer.garmin.com/x', 'kind': 'doc'}
+
+
+def test_normalize_doc_strips_scripts_styles_and_tags():
+    body = (
+        b'<html><head><style>.x{color:red}</style><script>var a=1;</script><title>T &amp; Co</title></head>'
+        b'<body><h1>Hello</h1> World</body></html>'
+    )
+    text = api_monitor.normalize_doc(body)
+    assert 'Hello' in text and 'World' in text
+    assert 'var a' not in text and 'color:red' not in text
+    assert api_monitor.page_title(body) == 'T & Co'
+
+
+def test_doc_hash_ignores_formatting_but_not_content():
+    assert api_monitor.doc_hash(b'<html><body>v1</body></html>') == api_monitor.doc_hash(b'<html><body>  v1\n</body></html>')
+    assert api_monitor.doc_hash(b'<html><body>v1</body></html>') != api_monitor.doc_hash(b'<html><body>v2</body></html>')
+
+
+def test_run_probe_doc_ok_with_matching_baseline():
+    body = b'<html><head><title>Health API</title></head><body>docs</body></html>'
+    baseline = {
+        'gc-health-api': {'url': 'https://developer.garmin.com/x', 'sha256': api_monitor.doc_hash(body), 'title': 'Health API'}
+    }
+    result = api_monitor.run_probe(
+        doc_probe(), fake_fetch({'developer.garmin.com/x': (200, body)}), {}, '2026-11-10', docs_baseline=baseline
+    )
+    assert result['ok']
+    assert result['sha256'] == baseline['gc-health-api']['sha256']
+    assert result['title'] == 'Health API'
+
+
+def test_run_probe_doc_change_detected():
+    baseline = {'gc-health-api': {'sha256': '0' * 64}}
+    result = api_monitor.run_probe(
+        doc_probe(),
+        fake_fetch({'developer.garmin.com/x': (200, b'<html><body>new</body></html>')}),
+        {},
+        '2026-11-10',
+        docs_baseline=baseline,
+    )
+    assert not result['ok']
+    assert 'documentation changed' in result['detail']
+    assert 'sha256' in result
+
+
+def test_run_probe_doc_missing_baseline_is_ok():
+    result = api_monitor.run_probe(
+        doc_probe(),
+        fake_fetch({'developer.garmin.com/x': (200, b'<html><body>x</body></html>')}),
+        {},
+        '2026-11-10',
+        docs_baseline={},
+    )
+    assert result['ok']
+    assert 'no baseline' in result['detail']
+
+
+def test_run_probe_doc_http_error():
+    result = api_monitor.run_probe(
+        doc_probe(), fake_fetch({'developer.garmin.com/x': (404, b'nope')}), {}, '2026-11-10', docs_baseline={}
+    )
+    assert not result['ok']
+    assert 'HTTP 404' in result['detail']
+
+
+def test_normalize_probe_set():
+    assert api_monitor.normalize_probe_set('all') == frozenset({'public', 'auth', 'docs'})
+    assert api_monitor.normalize_probe_set('public,docs') == frozenset({'public', 'docs'})
+    assert api_monitor.normalize_probe_set('docs') == frozenset({'docs'})
+    for bogus in ('bogus', ''):
+        try:
+            api_monitor.normalize_probe_set(bogus)
+            raise AssertionError('expected ValueError')
+        except ValueError:
+            pass
+
+
+def test_run_monitor_docs_ok_missing_and_failing():
+    body = b'<html><head><title>D</title></head><body>docs</body></html>'
+    fetch = fake_fetch({'developer.garmin.com': (200, body)})
+    baseline = {p['name']: {'sha256': api_monitor.doc_hash(body)} for p in api_monitor.DOC_PROBES}
+    code, report = api_monitor.run_monitor('docs', public_fetch=fetch, docs_baseline=baseline, today='2026-11-10')
+    assert code == 0 and report['ok'] and len(report['results']) == len(api_monitor.DOC_PROBES)
+    code, report = api_monitor.run_monitor('docs', public_fetch=fetch, docs_baseline={}, today='2026-11-10')
+    assert code == 0 and all('no baseline' in r['detail'] for r in report['results'])
+    code, report = api_monitor.run_monitor(
+        'docs', public_fetch=fake_fetch({'developer.garmin.com': (500, b'err')}), docs_baseline=baseline, today='2026-11-10'
+    )
+    assert code == 1 and not report['ok']
+
+
+def test_docs_baseline_roundtrip(tmp_path):
+    path = str(tmp_path / 'baseline.json')
+    api_monitor.save_docs_baseline({'a': {'sha256': 'x'}}, path=path)
+    assert api_monitor.load_docs_baseline(path) == {'a': {'sha256': 'x'}}
+    assert api_monitor.load_docs_baseline(str(tmp_path / 'missing.json')) == {}

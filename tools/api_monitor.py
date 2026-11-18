@@ -16,6 +16,13 @@ Description:    Monitors the Garmin Connect API for changes, so that API
                   like the daily export): socialProfile, the activity list,
                   userstats, the v2 daily summaries and the daily health
                   endpoints
+                - documentation/news pages (no login): the Garmin developer
+                  portal and the Garmin Connect Developer Program pages
+                  (overview, Activity API, Health API, Personal API including
+                  the Swagger/OpenAPI docs, Health SDKs) are hashed and
+                  compared against the checked-in baseline in
+                  tools/docs_baseline.json, so announced documentation changes
+                  are noticed before they break the export
 
                 For JSON endpoints the response structure is checked against
                 the sample responses in json/ plus the minimal set of keys the
@@ -48,8 +55,11 @@ itself could not run (e.g. curl_cffi missing).
 """
 
 import argparse
+import hashlib
+import html
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -67,6 +77,8 @@ if garmin_tls_patch.curl_requests is None:
 
 JSON_DIR = os.path.join(REPO_ROOT, 'json')
 CONNECT_API = garmin_tls_patch.CONNECT_API
+
+DOCS_BASELINE_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'docs_baseline.json')
 
 ISSUE_TITLE_PREFIX = 'Garmin API change detected'
 GITHUB_API = 'https://api.github.com'
@@ -94,6 +106,36 @@ PUBLIC_PROBES = [
         'url': f'{CONNECT_API}/userprofile-service/socialProfile',
         'kind': 'not-html',
     },
+]
+
+# Public Garmin documentation/news pages. Their visible text is hashed and
+# compared against the checked-in baseline (tools/docs_baseline.json), so an
+# announced change of the documented APIs is noticed before it breaks the export.
+DOC_PROBES = [
+    {'name': 'developer-portal', 'url': 'https://developer.garmin.com/', 'kind': 'doc'},
+    {'name': 'gc-program-overview', 'url': 'https://developer.garmin.com/gc-developer-program/', 'kind': 'doc'},
+    {
+        'name': 'gc-activity-api',
+        'url': 'https://developer.garmin.com/gc-developer-program/enterprise/activity-api',
+        'kind': 'doc',
+    },
+    {
+        'name': 'gc-health-api',
+        'url': 'https://developer.garmin.com/gc-developer-program/enterprise/health-api',
+        'kind': 'doc',
+    },
+    {'name': 'gc-personal-api', 'url': 'https://developer.garmin.com/gc-developer-program/personal/', 'kind': 'doc'},
+    {
+        'name': 'gc-personal-faq',
+        'url': 'https://developer.garmin.com/gc-developer-program/personal/personal-faq/',
+        'kind': 'doc',
+    },
+    {
+        'name': 'gc-personal-swagger',
+        'url': 'https://developer.garmin.com/gc-developer-program/personal/swagger-docs/',
+        'kind': 'doc',
+    },
+    {'name': 'health-sdk', 'url': 'https://developer.garmin.com/health-sdk/', 'kind': 'doc'},
 ]
 
 
@@ -210,6 +252,60 @@ def sample_property_keys(sample):
         return parse_properties(f.read())
 
 
+def normalize_doc(body):
+    """Visible text of an HTML page: scripts/styles/tags removed, entities resolved, whitespace collapsed."""
+    text = body.decode('utf-8', errors='replace') if isinstance(body, bytes) else str(body)
+    text = re.sub(r'<(script|style|noscript)\b[^>]*>.*?</\1\s*>', ' ', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    return ' '.join(html.unescape(text).split())
+
+
+def doc_hash(body):
+    """Stable hash of a documentation page's visible text."""
+    return hashlib.sha256(normalize_doc(body).encode('utf-8')).hexdigest()
+
+
+def page_title(body):
+    text = body.decode('utf-8', errors='replace') if isinstance(body, bytes) else str(body)
+    match = re.search(r'<title[^>]*>(.*?)</title>', text, flags=re.IGNORECASE | re.DOTALL)
+    return ' '.join(html.unescape(match.group(1)).split()) if match else ''
+
+
+def load_docs_baseline(path=DOCS_BASELINE_FILE):
+    """The checked-in {probe name: {url, sha256, title}} baseline of the documentation pages."""
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding='utf-8') as f:
+        return json.load(f)
+
+
+def save_docs_baseline(baseline, path=DOCS_BASELINE_FILE):
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(baseline, f, indent=2, sort_keys=True)
+        f.write('\n')
+
+
+PROBE_SETS = ('public', 'auth', 'docs')
+
+
+def normalize_probe_set(spec):
+    """Parse a --probe-set value ('public', 'docs', 'public,docs', 'all') into a frozenset."""
+    parts = [part.strip() for part in spec.split(',')] if isinstance(spec, str) else list(spec)
+    expanded = set()
+    for part in parts:
+        if not part:
+            continue
+        if part == 'all':
+            expanded.update(PROBE_SETS)
+        elif part in PROBE_SETS:
+            expanded.add(part)
+        else:
+            raise ValueError(f'unknown probe set "{part}" (choose from: {", ".join(PROBE_SETS + ("all",))})')
+    if not expanded:
+        raise ValueError('empty probe set')
+    return frozenset(expanded)
+
+
 def expected_keys(probe):
     keys = set(probe.get('required', []))
     if probe.get('sample'):
@@ -259,8 +355,8 @@ def check_structure(probe, data):
     return problems
 
 
-def run_probe(probe, fetch, ctx, today):
-    """Run one probe and return a result dict {name, url, ok, detail}."""
+def run_probe(probe, fetch, ctx, today, docs_baseline=None):
+    """Run one probe and return a result dict {name, url, ok, detail} (doc probes also carry sha256/title)."""
     url = probe['url']
     if callable(url):
         url = url(ctx)
@@ -299,6 +395,22 @@ def run_probe(probe, fetch, ctx, today):
             missing = sample_property_keys(probe['sample']) - parse_properties(body.decode('utf-8', errors='replace'))
             if missing:
                 result.update(ok=False, detail='missing keys: ' + ', '.join(sorted(missing)))
+    elif kind == 'doc':
+        if status != 200:
+            result.update(ok=False, detail=f'HTTP {status}: {snippet(body)}')
+        else:
+            digest = doc_hash(body)
+            result['sha256'] = digest
+            result['title'] = page_title(body)
+            entry = (docs_baseline or {}).get(probe['name'])
+            if entry is None:
+                result['detail'] = 'no baseline recorded yet (run with --update-docs-baseline to record it)'
+            elif entry.get('sha256') != digest:
+                old = str(entry.get('sha256', '?'))[:12]
+                result.update(
+                    ok=False,
+                    detail=f'documentation changed (sha256 {old}... -> {digest[:12]}..., page title "{result["title"]}")',
+                )
     else:
         if status != 200:
             result.update(ok=False, detail=f'HTTP {status}: {snippet(body)}')
@@ -318,23 +430,34 @@ def run_probe(probe, fetch, ctx, today):
     return result
 
 
-def run_monitor(probe_set, public_fetch=None, auth_fetch=None, login_error=None, today=None):
+def run_monitor(probe_set, public_fetch=None, auth_fetch=None, login_error=None, today=None, docs_baseline=None):
     """Run the probes of the given set and return (exit_code, report)."""
     today = today or today_str()
+    probe_set = normalize_probe_set(probe_set)
     ctx = {}
     results = []
     if login_error:
         results.append({'name': 'login', 'url': garmin_tls_patch.SSO, 'ok': False, 'detail': login_error})
-    if probe_set in ('public', 'all') and public_fetch:
+    if 'public' in probe_set and public_fetch:
         for probe in PUBLIC_PROBES:
             results.append(run_probe(probe, public_fetch, ctx, today))
     auth_unavailable = False
-    if probe_set in ('auth', 'all') and not login_error:
+    if 'auth' in probe_set and not login_error:
         if auth_fetch is None:
             auth_unavailable = True
         else:
             for probe in auth_probes(today):
                 results.append(run_probe(probe, auth_fetch, ctx, today))
+    if 'docs' in probe_set:
+        if public_fetch is None:
+            results.append(
+                {'name': 'docs', 'url': 'Garmin documentation pages', 'ok': False, 'detail': 'no public fetcher available'}
+            )
+        else:
+            if docs_baseline is None:
+                docs_baseline = load_docs_baseline()
+            for probe in DOC_PROBES:
+                results.append(run_probe(probe, public_fetch, ctx, today, docs_baseline=docs_baseline))
     problems = [r for r in results if not r['ok']]
     report = {
         'date': today,
@@ -376,6 +499,15 @@ def render_issue_body(report):
     ]
     for p in report['problems']:
         lines.append(f"- **{p['name']}** (`{p['url']}`): {p['detail']}")
+    if any('sha256' in p for p in report['problems']):
+        lines += [
+            '',
+            'A Garmin documentation/news page changed. After reviewing the page, record the new state with:',
+            '',
+            '```bash',
+            'python3 tools/api_monitor.py --probe-set docs --update-docs-baseline',
+            '```',
+        ]
     run_id = os.environ.get('GITHUB_RUN_ID')
     if run_id:
         repo = os.environ.get('GITHUB_REPOSITORY', 'DjAgge/garminimport')
@@ -463,7 +595,16 @@ def parse_args(argv):
     )
     parser.add_argument('--username', help='Garmin username for a full login (fallback: GARMIN_USERNAME)')
     parser.add_argument('--password', help='Garmin password for a full login (fallback: GARMIN_PASSWORD)')
-    parser.add_argument('--probe-set', choices=['public', 'auth', 'all'], default='all', help='which probes to run (default: all)')
+    parser.add_argument(
+        '--probe-set',
+        default='all',
+        help="which probes to run: 'public', 'auth', 'docs' or a comma-separated list like 'public,docs'; 'all' = all three (default: all)",
+    )
+    parser.add_argument(
+        '--update-docs-baseline',
+        action='store_true',
+        help=f'record the current hashes of the documentation pages in {DOCS_BASELINE_FILE} instead of reporting them as changes',
+    )
     parser.add_argument(
         '--repo',
         default=os.environ.get('GITHUB_REPOSITORY', 'DjAgge/garminimport'),
@@ -477,17 +618,40 @@ def parse_args(argv):
     parser.add_argument('--dry-run', action='store_true', help='do not open issues or call webhooks, only print')
     parser.add_argument('--report', help='write the JSON report to this file')
     parser.add_argument('-v', '--verbose', action='count', default=0)
-    return parser.parse_args(argv[1:])
+    args = parser.parse_args(argv[1:])
+    try:
+        normalize_probe_set(args.probe_set)
+    except ValueError as ex:
+        parser.error(str(ex))
+    return args
 
 
 def main(argv):
     args = parse_args(argv)
+    probe_set = normalize_probe_set(args.probe_set)
     login_error = None
     auth_fetch = None
-    if args.probe_set in ('auth', 'all'):
+    if 'auth' in probe_set:
         auth_fetch, login_error = ensure_session(args)
-    public_fetch = make_public_fetcher() if args.probe_set in ('public', 'all') else None
-    code, report = run_monitor(args.probe_set, public_fetch=public_fetch, auth_fetch=auth_fetch, login_error=login_error)
+    public_fetch = make_public_fetcher() if 'public' in probe_set or 'docs' in probe_set else None
+    docs_baseline = load_docs_baseline() if 'docs' in probe_set else None
+    code, report = run_monitor(
+        probe_set, public_fetch=public_fetch, auth_fetch=auth_fetch, login_error=login_error, docs_baseline=docs_baseline
+    )
+    if args.update_docs_baseline and 'docs' in probe_set:
+        baseline = dict(docs_baseline or {})
+        changed = []
+        for r in report['results']:
+            if r.get('sha256'):
+                if baseline.get(r['name'], {}).get('sha256') != r['sha256']:
+                    changed.append(r['name'])
+                baseline[r['name']] = {'url': r['url'], 'sha256': r['sha256'], 'title': r.get('title', '')}
+        save_docs_baseline(baseline)
+        suffix = f' (changed: {", ".join(changed)})' if changed else ' (no changes)'
+        print(f'Updated the documentation baseline {DOCS_BASELINE_FILE}{suffix}')
+        report['problems'] = [p for p in report['problems'] if 'sha256' not in p]
+        report['ok'] = not report['problems']
+        code = 1 if report['problems'] else 0
     print(render_report_text(report))
     if args.report:
         with open(args.report, 'w', encoding='utf-8') as f:

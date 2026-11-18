@@ -27,8 +27,9 @@ if [ -d "$EXPORT_DIR/health" ]; then
     done
 fi
 
-# Probe the Garmin API first: when Garmin changes an endpoint or the response
-# structure, the monitor reports it loudly and notifies (GitHub issue when
+# Probe the Garmin API and documentation first: when Garmin changes an endpoint,
+# the response structure or the API documentation/news pages, the monitor reports
+# it loudly and notifies (GitHub issue when
 # GITHUB_TOKEN is set in the container environment, webhook when
 # MONITOR_WEBHOOK_URL is set). A monitor failure must not block the export.
 python3 tools/api_monitor.py \

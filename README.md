@@ -30,7 +30,10 @@ and a Docker stack for scheduled runs:
 - **Budibase import** (`tools/budibase_import.py`): pushes the exported health data into the internal
   database of a self-hosted [Budibase](https://budibase.com) instance — one combined row per day
 - **API monitoring** (`tools/api_monitor.py`): probes the Garmin endpoints used by the export and
-  checks the response structure against the samples in `json/`; on a detected change it notifies via
+  checks the response structure against the samples in `json/`; it also watches Garmin's developer
+  documentation/news pages (developer.garmin.com, incl. the Connect Developer Program and the Personal
+  API Swagger docs) against the baseline in `tools/docs_baseline.json`, so announced API changes are
+  noticed in advance; on a detected change it notifies via
   a deduplicated GitHub issue or a webhook (see
   [Monitoring Garmin API changes](#monitoring-garmin-api-changes))
 - Error messages now include Garmin's response body (status code and text) for much easier diagnosis
@@ -307,7 +310,14 @@ and checks the JSON response structure against the sample responses in `json/`:
   before every export (all connectapi endpoints: profile, activity list, userstats, daily summaries,
   sleep, body battery, HRV, weight)
 - **weekly in CI**: `.github/workflows/api-monitor.yml` probes the public endpoints (SSO sign-in
-  page, activity/event type property files, unauthenticated connectapi behaviour)
+  page, activity/event type property files, unauthenticated connectapi behaviour) and the
+  documentation/news pages (`--probe-set public,docs`)
+- **documentation/news monitoring** (`--probe-set docs`): the Garmin developer portal and the
+  Garmin Connect Developer Program pages (overview, Activity API, Health API, Personal API incl.
+  Swagger/OpenAPI docs, Health SDKs) are hashed and compared against `tools/docs_baseline.json`;
+  after reviewing a reported change, record the new state with
+  `python3 tools/api_monitor.py --probe-set docs --update-docs-baseline` and commit the updated
+  baseline
 
 A non-JSON (e.g. HTML) answer, a wrong status code, a failed login or missing response keys count as
 a change: the monitor exits with code 1 and notifies via a deduplicated GitHub issue (set
