@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY gcexport.py garmin_tls_patch.py filtering.py ./
 COPY csv_header_*.properties ./
 COPY tools/ tools/
+# sample responses for the API monitor's structure checks (tools/api_monitor.py)
+COPY json/ json/
 
 # One-shot container: runs gcexport.py (and optionally the Budibase import
 # via tools/run_daily.sh), so the host/NAS scheduler decides when it runs.

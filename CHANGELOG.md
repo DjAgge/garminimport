@@ -46,6 +46,11 @@ agent); the older entries are the history of the upstream repository
   URLs with the sign-in HTML page (HTTP 200), while the export fetches them with the session
   (`gcexport.py`) and still receives the properties file; the weekly public CI run therefore no
   longer flags them
+- fixed: the Docker image now also copies `json/` into `/app`, so `tools/api_monitor.py` can
+  check the response structure against the sample responses inside the container (previously the
+  monitor crashed with a FileNotFoundError in the container, e.g. on `/app/json/activities-list.json`);
+  a missing sample file no longer crashes the monitor and only reduces the check to the probe's
+  explicit required keys
 
 
 ## Unreleased

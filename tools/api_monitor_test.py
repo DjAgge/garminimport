@@ -331,3 +331,8 @@ def test_run_monitor_auth_properties_html_fails():
     assert code == 1
     assert report['problems'][0]['name'] == 'activity-types-properties'
     assert 'HTML' in report['problems'][0]['detail']
+
+
+def test_sample_keys_missing_file_returns_empty_set():
+    assert api_monitor.sample_keys('does-not-exist.json') == set()
+    assert api_monitor.sample_property_keys('does-not-exist.properties') == set()
