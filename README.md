@@ -307,10 +307,10 @@ early instead of only surfacing as a failing export run. It probes the endpoints
 and checks the JSON response structure against the sample responses in `json/`:
 
 - **daily on the NAS**: `tools/run_daily.sh` runs the monitor with the cached `--tokenfile` tokens
-  before every export (all connectapi endpoints: profile, activity list, userstats, daily summaries,
-  sleep, body battery, HRV, weight)
+  before every export (all connectapi endpoints: profile, activity/event type property files,
+  activity list, userstats, daily summaries, sleep, body battery, HRV, weight)
 - **weekly in CI**: `.github/workflows/api-monitor.yml` probes the public endpoints (SSO sign-in
-  page, activity/event type property files, unauthenticated connectapi behaviour) and the
+  page, unauthenticated connectapi behaviour) and the
   documentation/news pages (`--probe-set public,docs`)
 - **documentation/news monitoring** (`--probe-set docs`): the Garmin developer portal and the
   Garmin Connect Developer Program pages (overview, Activity API, Health API, Personal API incl.

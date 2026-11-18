@@ -9,13 +9,14 @@ Description:    Monitors the Garmin Connect API for changes, so that API
 
                 The monitor probes the endpoints that gcexport.py depends on:
 
-                - public (no login): the SSO sign-in page, the activity/event
-                  type property files on connect.garmin.com and the
+                - public (no login): the SSO sign-in page and the
                   unauthenticated behaviour of connectapi.garmin.com
                 - authenticated (session restored from --tokenfile, exactly
-                  like the daily export): socialProfile, the activity list,
-                  userstats, the v2 daily summaries and the daily health
-                  endpoints
+                  like the daily export): socialProfile, the activity/event
+                  type property files on connect.garmin.com (they need the
+                  login session; without one Garmin answers with the sign-in
+                  HTML page), the activity list, userstats, the v2 daily
+                  summaries and the daily health endpoints
                 - documentation/news pages (no login): the Garmin developer
                   portal and the Garmin Connect Developer Program pages
                   (overview, Activity API, Health API, Personal API including
@@ -88,18 +89,6 @@ PUBLIC_PROBES = [
         'name': 'sso-signin-page',
         'url': f'{garmin_tls_patch.SSO}/mobile/sso/en/sign-in?clientId={garmin_tls_patch.CLIENT_ID}',
         'kind': 'page',
-    },
-    {
-        'name': 'activity-types-properties',
-        'url': 'https://connect.garmin.com/modern/main/js/properties/activity_types/activity_types.properties',
-        'kind': 'properties',
-        'sample': 'activity_types.properties',
-    },
-    {
-        'name': 'event-types-properties',
-        'url': 'https://connect.garmin.com/modern/main/js/properties/event_types/event_types.properties',
-        'kind': 'properties',
-        'sample': 'event_types.properties',
     },
     {
         'name': 'connectapi-unauthenticated',
@@ -190,6 +179,18 @@ def auth_probes(today):
             'name': 'weight-range',
             'url': f'{CONNECT_API}/weight-service/weight/range/{today}/{today}?includeAll=true',
             'kind': 'list',
+        },
+        {
+            'name': 'activity-types-properties',
+            'url': 'https://connect.garmin.com/modern/main/js/properties/activity_types/activity_types.properties',
+            'kind': 'properties',
+            'sample': 'activity_types.properties',
+        },
+        {
+            'name': 'event-types-properties',
+            'url': 'https://connect.garmin.com/modern/main/js/properties/event_types/event_types.properties',
+            'kind': 'properties',
+            'sample': 'event_types.properties',
         },
     ]
 
