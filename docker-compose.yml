@@ -40,6 +40,14 @@ services:
       BUDIBASE_API_KEY: "${BUDIBASE_API_KEY:-}"
       BUDIBASE_APP_ID: "${BUDIBASE_APP_ID:-}"
       BUDIBASE_TABLE: "${BUDIBASE_TABLE:-Health Daily}"
+      # optional API-change monitoring (tools/api_monitor.py, run by
+      # tools/run_daily.sh before every export): when GITHUB_TOKEN (a
+      # fine-grained PAT with issues:write) is set, a detected Garmin API
+      # change opens a deduplicated issue in GITHUB_REPOSITORY; alternatively
+      # or additionally set MONITOR_WEBHOOK_URL to receive the JSON report
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      GITHUB_REPOSITORY: "${GITHUB_REPOSITORY:-DjAgge/garminimport}"
+      MONITOR_WEBHOOK_URL: "${MONITOR_WEBHOOK_URL:-}"
     volumes:
       # persistent storage for the OAuth tokens and the exports
       - garmin-data:/data

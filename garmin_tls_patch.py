@@ -75,6 +75,7 @@ class GarminTlsException(Exception):
     """Raised for login or HTTP errors, including Garmin's response body."""
 
     def __init__(self, message, response=None):
+        self.response = response
         if response is not None:
             body = response.text
             if len(body) > 500:
