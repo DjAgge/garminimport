@@ -239,18 +239,28 @@ def parse_properties(text):
 
 
 def sample_keys(sample):
-    """Top-level keys of a checked-in sample response (for arrays: of the first element)."""
-    with open(os.path.join(JSON_DIR, sample), encoding='utf-8') as f:
-        data = json.load(f)
+    """Top-level keys of a checked-in sample response (for arrays: of the first element).
+
+    Returns an empty set when the sample file is missing (e.g. a minimal image
+    without json/), so only the probe's explicit 'required' keys are checked.
+    """
+    try:
+        with open(os.path.join(JSON_DIR, sample), encoding='utf-8') as f:
+            data = json.load(f)
+    except OSError:
+        return set()
     if isinstance(data, list):
         data = data[0] if data else {}
     return set(data.keys())
 
 
 def sample_property_keys(sample):
-    """Keys of a checked-in sample .properties file."""
-    with open(os.path.join(JSON_DIR, sample), encoding='utf-8') as f:
-        return parse_properties(f.read())
+    """Keys of a checked-in sample .properties file (empty set when the file is missing)."""
+    try:
+        with open(os.path.join(JSON_DIR, sample), encoding='utf-8') as f:
+            return parse_properties(f.read())
+    except OSError:
+        return set()
 
 
 def normalize_doc(body):
