@@ -20,6 +20,11 @@ agent); the older entries are the history of the upstream repository
   summary, sleep data, body battery) of the last DAYS days as JSON files
 - changed: error messages for failed login or export requests now include
   Garmin's response body for easier diagnosis
+- fixed: fetch the daily summary from Garmin's `usersummary-service/v2/dailysummaries`
+  range endpoint — since 2026-10-28 the old per-day v1 endpoint no longer returns the
+  flat fields, which left the daily rows in the Budibase import empty;
+  `tools/budibase_import.py` now flattens the topic-grouped v2 values and maps the
+  well-known fields back to the flat v1 column names
 
 
 ## Unreleased
