@@ -41,6 +41,11 @@ agent); the older entries are the history of the upstream repository
   `python3 tools/api_monitor.py --probe-set docs --update-docs-baseline` and commit the new baseline;
   the weekly CI workflow now runs `--probe-set public,docs` and the daily NAS run (`all`) includes
   the docs probes too
+- changed: the `activity_types`/`event_types` .properties probes of `tools/api_monitor.py` moved
+  from the public to the authenticated probe set — without a login session Garmin answers those
+  URLs with the sign-in HTML page (HTTP 200), while the export fetches them with the session
+  (`gcexport.py`) and still receives the properties file; the weekly public CI run therefore no
+  longer flags them
 
 
 ## Unreleased

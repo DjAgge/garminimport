@@ -149,15 +149,13 @@ def test_run_monitor_all_ok_exit_0():
 def test_run_monitor_failure_exit_1():
     failing = fake_fetch(
         {
-            'sign-in': (200, b'<html><body>Garmin Sign In</body></html>'),
-            'activity_types': (200, b'activity_type_running=Running\n'),
-            'event_types': (200, b'event_type=1\n'),
+            'sign-in': (200, b'{"json": true}'),
             'socialProfile': (401, b'{}'),
         }
     )
     code, report = api_monitor.run_monitor('public', public_fetch=failing, today='2026-11-10')
     assert code == 1
-    assert report['problems'][0]['name'] == 'activity-types-properties'
+    assert report['problems'][0]['name'] == 'sso-signin-page'
 
 
 def test_run_monitor_auth_unavailable_exit_2():
@@ -284,3 +282,52 @@ def test_docs_baseline_roundtrip(tmp_path):
     api_monitor.save_docs_baseline({'a': {'sha256': 'x'}}, path=path)
     assert api_monitor.load_docs_baseline(path) == {'a': {'sha256': 'x'}}
     assert api_monitor.load_docs_baseline(str(tmp_path / 'missing.json')) == {}
+
+
+def auth_ok_fetch(overrides=None):
+    with open(f'{api_monitor.JSON_DIR}/activities-list.json') as f:
+        activity = json.load(f)[0]
+    with open(f'{api_monitor.JSON_DIR}/userstats.json') as f:
+        userstats = json.load(f)
+    props = {
+        sample: '\n'.join(f'{key}=x' for key in api_monitor.sample_property_keys(sample))
+        for sample in ('activity_types.properties', 'event_types.properties')
+    }
+    mapping = {
+        'socialProfile': (200, json.dumps({'id': 1, 'displayName': 'tester'}).encode()),
+        'activitylist-service': (200, json.dumps([activity]).encode()),
+        'userstats-service': (200, json.dumps(userstats).encode()),
+        'dailysummaries': (200, b'{"data": [{"calendarDate": "2026-11-10"}]}'),
+        'dailySleepData': (200, b'{}'),
+        'bodyBattery': (200, b'[]'),
+        'hrv-service': (200, b'{}'),
+        'weight/range': (200, b'[]'),
+        'activity_types': (200, props['activity_types.properties'].encode()),
+        'event_types': (200, props['event_types.properties'].encode()),
+    }
+    mapping.update(overrides or {})
+    return fake_fetch(mapping)
+
+
+def test_properties_probes_are_authenticated_not_public():
+    public_names = [p['name'] for p in api_monitor.PUBLIC_PROBES]
+    auth_names = [p['name'] for p in api_monitor.auth_probes('2026-11-10')]
+    assert 'activity-types-properties' not in public_names
+    assert 'event-types-properties' not in public_names
+    assert 'activity-types-properties' in auth_names
+    assert 'event-types-properties' in auth_names
+
+
+def test_run_monitor_auth_ok_exit_0():
+    code, report = api_monitor.run_monitor('auth', auth_fetch=auth_ok_fetch(), today='2026-11-10')
+    assert code == 0
+    assert report['ok']
+    assert len(report['results']) == len(api_monitor.auth_probes('2026-11-10'))
+
+
+def test_run_monitor_auth_properties_html_fails():
+    fetch = auth_ok_fetch({'activity_types': (200, b'<html>sign in</html>')})
+    code, report = api_monitor.run_monitor('auth', auth_fetch=fetch, today='2026-11-10')
+    assert code == 1
+    assert report['problems'][0]['name'] == 'activity-types-properties'
+    assert 'HTML' in report['problems'][0]['detail']

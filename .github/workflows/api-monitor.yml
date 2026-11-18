@@ -1,5 +1,5 @@
-# Weekly probe of Garmin's public endpoints (SSO sign-in page, activity/event
-# type property files, unauthenticated connectapi behaviour) and of Garmin's
+# Weekly probe of Garmin's public endpoints (SSO sign-in page, unauthenticated
+# connectapi behaviour) and of Garmin's
 # developer documentation/news pages (hashed against tools/docs_baseline.json,
 # so announced API changes are noticed before they break the export) via
 # tools/api_monitor.py. The full authenticated monitoring of the connectapi
