@@ -51,6 +51,12 @@ agent); the older entries are the history of the upstream repository
   monitor crashed with a FileNotFoundError in the container, e.g. on `/app/json/activities-list.json`);
   a missing sample file no longer crashes the monitor and only reduces the check to the probe's
   explicit required keys
+- fixed: two false positives of `tools/api_monitor.py`: the `activity-list` probe now only requires
+  the keys gcexport.py actually reads from a list element (the sample response has ~170 additional
+  optional keys that a plain running activity does not have), and `weight-range` accepts any JSON
+  answer (a list when weight data exists, an object when there is none); the .properties probes
+  now say in their detail that Garmin serves the sign-in page for the /modern assets without a web
+  session (the export then falls back to the raw type keys)
 
 
 ## Unreleased

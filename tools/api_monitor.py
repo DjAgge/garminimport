@@ -143,7 +143,19 @@ def auth_probes(today):
             'name': 'activity-list',
             'url': f'{CONNECT_API}/activitylist-service/activities/search/activities?start=0&limit=1',
             'kind': 'list',
-            'sample': 'activities-list.json',
+            # only the keys gcexport.py reads from a list element; the sample
+            # response has ~170 more optional keys (power, swim, dive, ...)
+            # that a plain running activity does not have
+            'required': [
+                'activityId',
+                'activityType',
+                'activityName',
+                'beginTimestamp',
+                'startTimeLocal',
+                'startTimeGMT',
+                'duration',
+                'distance',
+            ],
         },
         {
             'name': 'userstats',
@@ -178,7 +190,8 @@ def auth_probes(today):
         {
             'name': 'weight-range',
             'url': f'{CONNECT_API}/weight-service/weight/range/{today}/{today}?includeAll=true',
-            'kind': 'list',
+            # a list when weight data exists, a JSON object otherwise (no scale)
+            'kind': 'json',
         },
         {
             'name': 'activity-types-properties',
@@ -400,7 +413,11 @@ def run_probe(probe, fetch, ctx, today, docs_baseline=None):
         elif b'<html' in body.lower():
             result.update(
                 ok=False,
-                detail=f'HTTP 200, but the answer is HTML instead of a .properties file (endpoint moved?): {snippet(body)}',
+                detail=(
+                    'HTTP 200, but the answer is HTML instead of a .properties file '
+                    '(Garmin serves the sign-in page for /modern assets without a web session; '
+                    f'the export then falls back to the raw type keys): {snippet(body)}'
+                ),
             )
         else:
             missing = sample_property_keys(probe['sample']) - parse_properties(body.decode('utf-8', errors='replace'))
