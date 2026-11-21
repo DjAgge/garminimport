@@ -300,6 +300,12 @@ Configuration is done via environment variables (`BUDIBASE_URL`,
 import runs automatically after the export; leave `BUDIBASE_API_KEY` empty to
 disable it.
 
+`BUDIBASE_APP_ID` is the app ID from the builder URL (`/builder/workspace/<id>/`): use the
+**development ID** (`app_dev_...`) so the created table shows up in the builder's Data
+section — a published ID (`app_...`) writes to the published app only, where the builder
+does not show the table (and a re-publish overwrites it). If the export produced no health
+rows, the import exits with an error instead of finishing silently without a table.
+
 ### Monitoring Garmin API changes
 
 `tools/api_monitor.py` watches the Garmin Connect API for changes, so the next API change is noticed
