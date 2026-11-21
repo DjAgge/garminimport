@@ -51,6 +51,12 @@ agent); the older entries are the history of the upstream repository
   monitor crashed with a FileNotFoundError in the container, e.g. on `/app/json/activities-list.json`);
   a missing sample file no longer crashes the monitor and only reduces the check to the probe's
   explicit required keys
+- fixed: `tools/budibase_import.py` now exits with an error instead of finishing
+  "successfully" without creating a table when the export contains no health rows
+  (no `calendarDate` found in the health JSONs); the log now states the target app
+  (development vs. published) and the table ID, and warns when `BUDIBASE_APP_ID` is a
+  published `app_...` ID, because the table is then created in the published app only
+  and is not visible in the builder — use the `app_dev_...` ID from the builder URL
 
 
 ## Unreleased

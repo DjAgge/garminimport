@@ -26,10 +26,15 @@ Configuration via environment variables:
     BUDIBASE_URL          base URL of the Budibase instance, e.g.
                           http://budibase:8080 or https://bb.example.com
     BUDIBASE_API_KEY      API key of the Budibase user (user menu → API key)
-    BUDIBASE_APP_ID       ID of the Budibase app/workspace the table lives in
-                          (from the builder URL, /builder/workspace/<id>/);
-                          use the published ID (without "_dev_") for
-                          published apps, e.g. app_641843cd1c254cf096fb059a68f32405
+    BUDIBASE_APP_ID       ID of the Budibase app the table lives in, from the
+                          builder URL /builder/workspace/<id>/ — use the
+                          DEVELOPMENT ID (app_dev_..., e.g.
+                          app_dev_641843cd1c254cf096fb059a68f32405) so the
+                          table shows up in the builder's Data section. A
+                          published ID (app_..., without "_dev_") writes to
+                          the published app only: the table is then NOT visible
+                          in the builder (which shows the development app) and
+                          is overwritten the next time the app is published
     BUDIBASE_TABLE        table for the daily rows (default "Health Daily")
     EXPORT_DIR            gcexport output directory containing health/
     DRY_RUN               set to 1 to only print what would be imported
@@ -108,7 +113,7 @@ def ensure_table(table_name, rows):
                     schema[key] = {'type': 'number', 'name': key}
                 else:
                     schema[key] = {'type': 'string', 'name': key}
-    logging.info('Creating Budibase table %s with %d columns', table_name, len(schema))
+    logging.info('Creating Budibase table %s with %d columns in app %s', table_name, len(schema), APP_ID)
     return api('POST', '/tables', {'name': table_name, 'schema': schema})['data']['_id']
 
 
@@ -137,7 +142,7 @@ def import_rows(table_name, rows):
     table_id = ensure_table(table_name, rows)
     existing = existing_import_keys(table_id) if not DRY_RUN else set()
     new_rows = [row for row in rows if row['importKey'] not in existing]
-    logging.info('Importing %d of %d rows into %s', len(new_rows), len(rows), table_name)
+    logging.info('Importing %d of %d rows into table %s (id %s, app %s)', len(new_rows), len(rows), table_name, table_id, APP_ID)
     for row in new_rows:
         if DRY_RUN:
             logging.info('Dry run, would import: %s', row['importKey'])
@@ -315,16 +320,35 @@ def load_daily_rows():
     return [days[day] for day in sorted(days)]
 
 
+def app_kind(app_id):
+    """'development' for app_dev_... IDs (the app shown in the builder), otherwise 'published'."""
+    return 'development' if app_id.startswith('app_dev_') else 'published'
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
     if not BUDIBASE_URL or not BUDIBASE_API_KEY:
         sys.exit('BUDIBASE_URL and BUDIBASE_API_KEY must be set')
     if not APP_ID:
-        sys.exit('BUDIBASE_APP_ID must be set (from the builder URL, ' '/builder/workspace/<id>/)')
+        sys.exit('BUDIBASE_APP_ID must be set (from the builder URL, /builder/workspace/<id>/)')
     if not os.path.isdir(os.path.join(EXPORT_DIR, 'health')):
         sys.exit(f'No health data found in {EXPORT_DIR!r} (run gcexport.py --health first)')
 
-    import_rows(TABLE, load_daily_rows())
+    rows = load_daily_rows()
+    if not rows:
+        sys.exit(
+            f'No health rows with a calendarDate found under {os.path.join(EXPORT_DIR, "health")!r} '
+            '(looked for daily/*_daily_summary.json and the range JSONs); no table was created in Budibase'
+        )
+    logging.info('Found %d day(s) of health data; importing into Budibase app %s (%s app)', len(rows), APP_ID, app_kind(APP_ID))
+    if app_kind(APP_ID) != 'development':
+        logging.warning(
+            'BUDIBASE_APP_ID %s is a published app ID: the table is created in the published app only — '
+            'it is NOT visible in the builder (which shows the development app) and is overwritten on the '
+            'next publish; use the app_dev_... ID from the builder URL to see the table in the builder',
+            APP_ID,
+        )
+    import_rows(TABLE, rows)
     logging.info('Budibase import finished')
 
 
