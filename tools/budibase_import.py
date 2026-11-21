@@ -269,8 +269,8 @@ def load_range_entries(prefix, filename):
     return entries
 
 
-# Garmin supplies these weight fields in grams; store them in kilograms
-WEIGHT_GRAM_FIELDS = {'weight_weight', 'weight_weightDelta'}
+# Garmin supplies the body mass fields in grams; store them in kilograms
+WEIGHT_GRAM_FIELDS = {'weight_weight', 'weight_weightDelta', 'weight_boneMass', 'weight_muscleMass'}
 
 
 def load_weight_per_day():
