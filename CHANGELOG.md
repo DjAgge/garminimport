@@ -57,6 +57,9 @@ agent); the older entries are the history of the upstream repository
   (development vs. published) and the table ID, and warns when `BUDIBASE_APP_ID` is a
   published `app_...` ID, because the table is then created in the published app only
   and is not visible in the builder — use the `app_dev_...` ID from the builder URL
+- fixed: `tools/budibase_import.py` now also converts `weight_boneMass` and
+  `weight_muscleMass` from grams to kilograms (like `weight_weight` and
+  `weight_weightDelta`), so all body mass columns are stored in kg
 
 
 ## Unreleased

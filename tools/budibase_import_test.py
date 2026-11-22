@@ -82,7 +82,13 @@ def export_dir(tmp_path):
                     {
                         'calendarDate': '2026-11-18',
                         'allWeightMetrics': [
-                            {'calendarDate': '2026-11-18', 'datetimeUtc': '2026-11-18T06:00:00', 'weight': 75000},
+                            {
+                                'calendarDate': '2026-11-18',
+                                'datetimeUtc': '2026-11-18T06:00:00',
+                                'weight': 75000,
+                                'boneMass': 3200,
+                                'muscleMass': 35000,
+                            },
                         ],
                     }
                 ]
@@ -109,6 +115,8 @@ def test_load_daily_rows_combines_all_sources(export_dir, monkeypatch):
     assert row['stress_avgStressLevel'] == 42
     assert row['hrv_lastNightAvg'] == 38
     assert row['weight_weight'] == 75.0
+    assert row['weight_boneMass'] == 3.2
+    assert row['weight_muscleMass'] == 35.0
     assert row['importKey'] == 'daily:2026-11-18'
 
 

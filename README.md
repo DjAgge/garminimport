@@ -289,7 +289,9 @@ REST API:
   and **at most one weight measurement per day** (the last one of the day)
 - fields from the range statistics are prefixed with their source (e.g.
   `stress_avg`, `sleepScore_value`, `hrv_lastNightAvg`), weight fields with
-  `weight_` (e.g. `weight_weight`, `weight_bmi`)
+  `weight_` (e.g. `weight_weight`, `weight_bmi`); the body mass fields
+  (`weight_weight`, `weight_weightDelta`, `weight_boneMass`,
+  `weight_muscleMass`) are converted from grams to **kilograms**
 - the table and its columns are created automatically if they do not exist
 - rows carry an `importKey` (`daily:<date>`); repeated runs never import
   duplicates
