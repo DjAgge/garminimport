@@ -60,6 +60,12 @@ agent); the older entries are the history of the upstream repository
 - fixed: `tools/budibase_import.py` now also converts `weight_boneMass` and
   `weight_muscleMass` from grams to kilograms (like `weight_weight` and
   `weight_weightDelta`), so all body mass columns are stored in kg
+- fixed: two false positives of `tools/api_monitor.py`: the `activity-list` probe now only requires
+  the keys gcexport.py actually reads from a list element (the sample response has ~170 additional
+  optional keys that a plain running activity does not have), and `weight-range` accepts any JSON
+  answer (a list when weight data exists, an object when there is none); the .properties probes
+  now say in their detail that Garmin serves the sign-in page for the /modern assets without a web
+  session (the export then falls back to the raw type keys)
 
 
 ## Unreleased
